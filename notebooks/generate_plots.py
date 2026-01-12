@@ -1,0 +1,28 @@
+from data_helper import get_run_ids, cache_df
+from viz_helper import save_figures
+
+# enable caching?
+cache = False
+
+# scenarios for plotting
+scenarios = {}
+
+for scenario, setting in scenarios.items():
+    print(f"{'-' * 100}")
+    print(f"\nScenario: {scenario}\n")
+    print(f"{'-' * 100}")
+
+    # Obtain all run ids for the specified experiment
+    run_ids = get_run_ids(setting["experiment_id"])
+
+    # Get the df from cache or generate it if it doesn't exist
+    cache_id = setting
+    df, hs = cache_df(run_ids, df=None)
+
+    print(f"Hash for scenario: {hs}")
+
+    figures = ...
+
+    save_figures(
+        figures=figures, name=scenario, experiment_id=setting["experiment_id"], hash=hs
+    )

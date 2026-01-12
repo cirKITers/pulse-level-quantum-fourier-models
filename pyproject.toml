@@ -1,0 +1,87 @@
+[project]
+name = "pulse-level-qfms"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Melvin Strobl",email = "lc3267@kit.edu"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dynamic = [
+    "version",
+]
+dependencies = [
+    "kedro (>=1.1.1,<2.0.0)",
+    "mlflow (>=3.6.0,<4.0.0)",
+    "torch>=2.9.1",
+    "rich>=14.2.0",
+    "qml-essentials",
+    "autoray<0.7.3",
+    "kedro-mlflow>=2.0.0",
+    "kedro-datasets>=9.0.0",
+    "plotly>=6.5.0",
+    "kaleido>=1.2.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu" },
+]
+qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "71531efacf00332449e5ed5ab0c2bf553cf0110c" }
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
+[project.scripts]
+pulse-level-qfms = "pulse_level_qfms.__main__:main"
+
+[project.entry-points."kedro.hooks"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-cov>=3,<7",
+    "pytest-mock>=1.7.1, <2.0",
+    "pytest~=7.2",
+    "ruff~=0.12.0",
+]
+
+[tool.setuptools.dynamic.version]
+attr = "pulse_level_qfms.__version__"
+
+[tool.setuptools.packages.find]
+where = [
+    "src",
+]
+namespaces = false
+
+[tool.kedro]
+package_name = "pulse_level_qfms"
+project_name = "pulse-level-qfms"
+kedro_init_version = "1.1.1"
+tools = "['Testing']"
+example_pipeline = "False"
+source_dir = "src"
+
+[tool.pytest.ini_options]
+addopts = "--cov-report term-missing --cov src/pulse_level_qfms -ra"
+
+[tool.coverage.report]
+fail_under = 0
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+]
+
+[tool.kedro_telemetry]
+project_id = "5c7ab8baadcd442db0e150e20e9c2285"
