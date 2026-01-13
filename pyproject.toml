@@ -21,6 +21,7 @@ dependencies = [
     "kedro-datasets>=9.0.0",
     "plotly>=6.5.0",
     "kaleido>=1.2.0",
+    "ipykernel>=7.1.0",
 ]
 
 [[tool.uv.index]]
