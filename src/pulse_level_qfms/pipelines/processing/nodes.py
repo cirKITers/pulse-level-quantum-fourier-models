@@ -131,7 +131,9 @@ class PulseFCC(FCC):
                     scaler = np.ones(model.pulse_params.shape)
                 else:
                     scaler = rng.normal(
-                        scale=pulse_params_variance, size=model.pulse_params.shape
+                        loc=1.0,
+                        scale=pulse_params_variance,
+                        size=model.pulse_params.shape,
                     )
 
                 coeffs.append(
@@ -140,7 +142,7 @@ class PulseFCC(FCC):
                         shift=True,
                         trim=True,
                         gate_mode="pulse",
-                        # pulse_params=scaler * model.pulse_params,
+                        pulse_params=scaler * model.pulse_params,
                         **kwargs,
                     )[0]
                 )
