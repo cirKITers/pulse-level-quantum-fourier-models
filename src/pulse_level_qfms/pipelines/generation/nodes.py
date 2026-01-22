@@ -2,6 +2,7 @@ import pennylane as qml
 
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Gates
+from qml_essentials.coefficients import Datasets
 
 from typing import List, Dict, Union, Callable
 import numpy as np
@@ -54,8 +55,6 @@ def generate_model(
 
 def generate_fourier_series(
     model: Model,
-    domain: List[float],
-    omegas: List[List[float]],
     coefficients_min: float,
     coefficients_max: float,
     zero_centered: bool,
@@ -76,74 +75,19 @@ def generate_fourier_series(
     np.ndarray
         Fourier series representation of the function.
     """
-    mfs = 1
-    mts = 1
-
-    n_freqs: int = 2 * omegas + 1
-
-    start, stop, step = domain[0], domain[1], 2 * np.pi / n_freqs
-    # Stretch according to the number of frequencies
-    inputs: np.ndarray = np.arange(start, stop, step)
-
-    # permute with input dimensionality
-    domain_samples = np.array(np.meshgrid(*[inputs] * model.n_input_feat)).T.reshape(
-        -1, model.n_input_feat
-    )
-
     rng = np.random.default_rng(seed)
 
-    frequencies = np.stack(
-        np.meshgrid(
-            *[
-                np.linspace(-omegas, omegas, 2 * omegas + 1)
-                for _ in range(model.n_input_feat)
-            ]
-        )
-    ).T.reshape(-1, model.n_input_feat)
-
-    n_freqs: int = int(2 * mfs * omegas + 1)
-
-    coefficients = Sampling.uniform_circle(
-        rng,
-        coefficients_min,
-        coefficients_max,
-        int(np.ceil(frequencies.shape[0] / 2)),
+    domain_samples, fourier_samples, coefficients = Datasets.generate_fourier_series(
+        rng=rng,
+        model=model,
+        coefficients_min=coefficients_min,
+        coefficients_max=coefficients_max,
+        zero_centered=zero_centered,
     )
-
-    coefficients = coefficients.flatten()
-
-    if not zero_centered:
-        coefficients[0] = 0.0
-    else:
-        # ensure the first coefficient is real
-        coefficients[0] = coefficients[0].real
-
-    # ensure symmetry
-    coefficients = np.concat(
-        [np.flip(coefficients[1:]).conjugate(), coefficients],
-    )
-
-    def y(x: np.ndarray) -> float:
-        return (
-            np.real_if_close(np.sum(coefficients * np.exp(1j * frequencies.dot(x))))
-            / coefficients.size
-        )
-
-    values = np.stack([y(x) for x in domain_samples])
-
-    coefficients_hat = np.fft.fftshift(
-        np.fft.fftn(
-            values.reshape([n_freqs] * model.n_input_feat),
-            axes=list(range(model.n_input_feat)),
-        )
-    )
-    assert np.allclose(
-        coefficients, coefficients_hat.flatten(), atol=1e-6
-    ), "Frequencies don't match"
 
     return {
         "domain_samples": domain_samples,
-        "fourier_samples": values.flatten(),
+        "fourier_samples": fourier_samples.flatten(),
         "coefficients": coefficients,
     }
 
