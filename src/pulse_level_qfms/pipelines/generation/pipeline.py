@@ -20,7 +20,6 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "params:model.circuit_type",
                     "params:model.data_reupload",
                     "params:model.encoding_gates",
-                    "params:model.encoding_strategy",
                     "params:model.initialization",
                     "params:model.initialization_domain",
                     "params:model.output_qubit",
@@ -37,8 +36,6 @@ def create_pipeline(**kwargs) -> Pipeline:
                 tags=["generation"],
                 inputs=[
                     "model",
-                    "params:data.domain",
-                    "params:data.omegas",
                     "params:data.coefficients_min",
                     "params:data.coefficients_max",
                     "params:data.zero_centered",
