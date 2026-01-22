@@ -3,8 +3,6 @@ seed: 1000
 data:
   seed: 1000
   domain: [0, 6.283185307] # domain of x values
-  omegas: 6 # number of frequencies in each dimension
-  offset: False
   coefficients_max: 1.0
   coefficients_min: 0.0
   batch_size: -1
@@ -12,21 +10,14 @@ data:
 
 model:
   seed: 1000
-  n_qubits: 6
+  n_qubits: 2
   n_layers: 1
   circuit_type: "Circuit_19" # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
   data_reupload: True
   encoding_gates: ["RY"]
-  encoding_strategy: "standard"
   output_qubit: -1
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]
-  noise_params:
-    BitFlip: 0.0
-    PhaseFlip: 0.0
-    AmplitudeDamping: 0.0
-    PhaseDamping: 0.0
-    Depolarizing: 0.0
   mp_threshold: -1
 
 train:
@@ -39,3 +30,5 @@ train:
 fcc:
   seed: 1000
   n_samples: 500
+  fundamental_gates_only: False
+  pulse_params_variance: 0.1
