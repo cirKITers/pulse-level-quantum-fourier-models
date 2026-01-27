@@ -32,7 +32,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "model",
                     "params:fcc.seed",
                     "params:fcc.n_samples",
-                    "params:fcc.gate_mode",
+                    "params:fcc.sample_axis",
                     "params:fcc.pulse_params_variance",
                 ],
                 outputs={

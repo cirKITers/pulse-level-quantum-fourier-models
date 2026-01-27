@@ -88,8 +88,8 @@ class PulseFCC(FCC):
         n_samples: int,
         seed: int,
         scale: bool = False,
+        sample_axis: str = "pulse",
         pulse_params_variance: float = 0.1,
-        gate_mode: str = "pulse",
         **kwargs,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -103,6 +103,16 @@ class PulseFCC(FCC):
             seed (int): Seed to initialize random parameters
             scale (bool, optional): Whether to scale the number of samples.
                 Defaults to False.
+            sample_axis (str, optional): Allows specifying "unitary", "pulse" or
+                both. If both are specified, only unitary params actually receive
+                the total number of samples and pulse parameter will get "distorted".
+                If "pulse" is specified, a pulse simulation will be performed, else
+                a unitary simulation will be performed.
+            pulse_params_variance (float, optional): Variance of pulse parameters.
+                If this is set to 0.0, the pulse parameters will not be distorted.
+                I.e. a pulse simulation with default pulse parameters will run.
+
+
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
@@ -113,32 +123,55 @@ class PulseFCC(FCC):
                 total_samples = int(
                     np.power(2, model.n_qubits) * n_samples * model.n_input_feat
                 )
-                log.info(f"Using {total_samples} samples.")
             else:
                 total_samples = n_samples
+
             rng = np.random.default_rng(seed)
 
-            scaler = None
-            if gate_mode == "pulse":
-                scaler = rng.normal(
-                    loc=1.0,
-                    scale=pulse_params_variance,
-                    size=(*model.pulse_params.shape[:-1], total_samples),
-                )
+            if "unitary" in sample_axis:
+                model.initialize_params(rng=rng, repeat=total_samples)
+                log.info(f"Sampling unitary parameters")
+            else:
+                model.initialize_params(rng=rng)
+                log.info(f"Re-initializing unitary parameters")
 
-            coeffs, freqs = Coefficients.get_spectrum(
-                model,
-                shift=True,
-                trim=True,
-                gate_mode=gate_mode,
-                pulse_params=scaler,
-                **kwargs,
-            )
+            scaler = None
+
+            if "pulse" in sample_axis:
+                if "unitary" in sample_axis:
+                    if pulse_params_variance == 0.0:
+                        log.info(f"Using default pulse parameters")
+                    else:
+                        scaler = rng.normal(
+                            loc=1.0,
+                            scale=pulse_params_variance,
+                            size=model.pulse_params.shape,
+                        )
+                        log.info(f"Distorting pulse parameters")
+                else:
+                    scaler = rng.normal(
+                        loc=1.0,
+                        scale=pulse_params_variance,
+                        size=(*model.pulse_params.shape[:-1], total_samples),
+                    )
+                    log.info(f"Sampling unitary parameters")
+
+            log.info(f"Using {total_samples} samples for FCC calculation")
+
         else:
             total_samples = 1
-            coeffs, freqs = Coefficients.get_spectrum(
-                model, shift=True, trim=True, **kwargs
-            )
+
+        # always a pulse simulation
+        coeffs, freqs = Coefficients.get_spectrum(
+            model,
+            shift=True,
+            trim=True,
+            gate_mode="pulse" if "pulse" in sample_axis else "unitary",
+            pulse_params=scaler,
+            **kwargs,
+        )
+
+        # mlflow.log_metric("coefficients-variance", np.var(np.abs(coeffs), axis=1))
 
         return model.params, coeffs, freqs
 
@@ -150,7 +183,7 @@ def calculate_fcc(
     model: Model,
     seed: int,
     n_samples: int,
-    gate_mode: str,
+    sample_axis: str,
     pulse_params_variance: float,
 ):
     fourier_fingerprint, _ = PulseFCC.get_fourier_fingerprint(
@@ -158,10 +191,10 @@ def calculate_fcc(
         n_samples,
         seed,
         method="pearson",
-        scale=False,
+        scale=True,
         weight=False,
         trim_redundant=True,
-        gate_mode=gate_mode,
+        sample_axis=sample_axis,
         pulse_params_variance=pulse_params_variance,
     )
 
