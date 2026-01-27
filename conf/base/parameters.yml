@@ -12,7 +12,7 @@ model:
   seed: 1000
   n_qubits: 2
   n_layers: 1
-  circuit_type: "Circuit_19" # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
+  circuit_type: "Hardware_Efficient" # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
   data_reupload: True
   encoding_gates: ["RY"]
   output_qubit: -1
@@ -29,6 +29,6 @@ train:
 
 fcc:
   seed: 1000
-  n_samples: 500
-  fundamental_gates_only: False
+  n_samples: 40
+  gate_mode: "pulse"
   pulse_params_variance: 0.1

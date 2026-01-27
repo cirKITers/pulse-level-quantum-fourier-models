@@ -89,7 +89,7 @@ class PulseFCC(FCC):
         seed: int,
         scale: bool = False,
         pulse_params_variance: float = 0.1,
-        fundamental_gates_only: bool = False,
+        gate_mode: str = "pulse",
         **kwargs,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -118,34 +118,22 @@ class PulseFCC(FCC):
                 total_samples = n_samples
             rng = np.random.default_rng(seed)
 
-            coeffs = []
-
-            for _ in track(
-                range(total_samples),
-                description="Calculating Fourier Coefficients",
-                total=total_samples,
-            ):
-                model.initialize_params(rng=rng)
-
-                if fundamental_gates_only:
-                    scaler = np.ones(model.pulse_params.shape)
-                else:
-                    scaler = rng.normal(
-                        loc=1.0,
-                        scale=pulse_params_variance,
-                        size=model.pulse_params.shape,
-                    )
-
-                coeffs.append(
-                    Coefficients.get_spectrum(
-                        model,
-                        shift=True,
-                        trim=True,
-                        gate_mode="pulse",
-                        pulse_params=scaler * model.pulse_params,
-                        **kwargs,
-                    )[0]
+            scaler = None
+            if gate_mode == "pulse":
+                scaler = rng.normal(
+                    loc=1.0,
+                    scale=pulse_params_variance,
+                    size=(*model.pulse_params.shape[:-1], total_samples),
                 )
+
+            coeffs, freqs = Coefficients.get_spectrum(
+                model,
+                shift=True,
+                trim=True,
+                gate_mode=gate_mode,
+                pulse_params=scaler,
+                **kwargs,
+            )
         else:
             total_samples = 1
             coeffs, freqs = Coefficients.get_spectrum(
@@ -162,7 +150,7 @@ def calculate_fcc(
     model: Model,
     seed: int,
     n_samples: int,
-    fundamental_gates_only: bool,
+    gate_mode: str,
     pulse_params_variance: float,
 ):
     fourier_fingerprint, _ = PulseFCC.get_fourier_fingerprint(
@@ -173,7 +161,7 @@ def calculate_fcc(
         scale=False,
         weight=False,
         trim_redundant=True,
-        fundamental_gates_only=fundamental_gates_only,
+        gate_mode=gate_mode,
         pulse_params_variance=pulse_params_variance,
     )
 

@@ -22,6 +22,9 @@ dependencies = [
     "plotly>=6.5.0",
     "kaleido>=1.2.0",
     "ipykernel>=7.1.0",
+    "jax==0.4.28",
+    "jaxlib==0.4.28",
+    "optax==0.2.5",
 ]
 
 [[tool.uv.index]]
@@ -36,7 +39,7 @@ torch = [
 torchvision = [
     { index = "pytorch-cpu" },
 ]
-qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "65cec26d15f5f1411fdb260dfd4995809a3bdb34" }
+qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "5fb994beacb86751a7cec82cb43cf9db2ed2df03" }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
