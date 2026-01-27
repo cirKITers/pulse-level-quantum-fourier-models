@@ -1,5 +1,6 @@
 from typing import List, Dict, Tuple, Optional
 from rich.progress import track
+import io
 
 import mlflow
 from torch.utils.data import DataLoader
@@ -23,64 +24,6 @@ log = logging.getLogger(__name__)
 
 
 class PulseFCC(FCC):
-    @staticmethod
-    def get_fourier_fingerprint(
-        model: Model,
-        n_samples: int,
-        seed: int,
-        method: Optional[str] = "pearson",
-        scale: Optional[bool] = False,
-        weight: Optional[bool] = False,
-        trim_redundant: Optional[bool] = True,
-        **kwargs,
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Shortcut method to get just the fourier fingerprint.
-        This includes
-        1. Calculating the coefficients (using `n_samples` and `seed`)
-        2. Correlating the result from 1) using `method`
-        3. Weighting the correlation matrix (if `weight` is True)
-        4. Remove redundancies (if `trim_redundant` is True)
-
-        Args:
-            model (Model): The QFM model
-            n_samples (int): Number of samples to calculate average of coefficients
-            seed (int): Seed to initialize random parameters
-            method (Optional[str], optional): Correlation method. Defaults to "pearson".
-            scale (Optional[bool], optional): Whether to scale the number of samples.
-                Defaults to False.
-            weight (Optional[bool], optional): Whether to weight the correlation matrix.
-                Defaults to False.
-            trim_redundant (Optional[bool], optional): Whether to remove redundant
-                correlations. Defaults to True.
-            **kwargs: Additional keyword arguments for the model function.
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: The fourier fingerprint
-            and the frequency indices
-        """
-        _, coeffs, freqs = PulseFCC._calculate_coefficients(
-            model, n_samples, seed, scale, **kwargs
-        )
-        fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
-
-        # perform weighting if requested
-        fourier_fingerprint = (
-            FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
-        )
-
-        if trim_redundant:
-            mask = FCC._calculate_mask(freqs)
-
-            # apply the mask on the fingerprint
-            fourier_fingerprint = mask * fourier_fingerprint
-
-            row_mask = np.any(np.isfinite(fourier_fingerprint), axis=1)
-            col_mask = np.any(np.isfinite(fourier_fingerprint), axis=0)
-
-            fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
-
-        return fourier_fingerprint, freqs
 
     @staticmethod
     def _calculate_coefficients(
@@ -154,7 +97,7 @@ class PulseFCC(FCC):
                         scale=pulse_params_variance,
                         size=(*model.pulse_params.shape[:-1], total_samples),
                     )
-                    log.info(f"Sampling unitary parameters")
+                    log.info(f"Sampling pulse parameters")
 
             log.info(f"Using {total_samples} samples for FCC calculation")
 
@@ -171,12 +114,21 @@ class PulseFCC(FCC):
             **kwargs,
         )
 
-        # mlflow.log_metric("coefficients-variance", np.var(np.abs(coeffs), axis=1))
+        variances = np.var(np.abs(coeffs), axis=1)
+        means = np.mean(np.abs(coeffs), axis=1)
+
+        for freq in freqs:
+            mlflow.log_metric(f"coeff.mean.f{freq}", variances[int(freq)])
+            mlflow.log_metric(f"coeff.var.f{freq}", means[int(freq)])
 
         return model.params, coeffs, freqs
 
     def _collect_pulse_params(self, model: Model):
         return model.params
+
+
+# overwrite static method
+FCC._calculate_coefficients = PulseFCC._calculate_coefficients
 
 
 def calculate_fcc(
@@ -186,6 +138,8 @@ def calculate_fcc(
     sample_axis: str,
     pulse_params_variance: float,
 ):
+    log.info(f"Seed for FCC: {seed}")
+
     fourier_fingerprint, _ = PulseFCC.get_fourier_fingerprint(
         model,
         n_samples,
