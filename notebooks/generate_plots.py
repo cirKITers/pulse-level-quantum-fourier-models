@@ -1,11 +1,11 @@
 from data_helper import get_run_ids, cache_df
-from viz_helper import save_figures
+from viz_helper import save_figures, fcc_over_distortion
 
 # enable caching?
 cache = False
 
 # scenarios for plotting
-scenarios = {}
+scenarios = {"study-1": {"experiment_id": 896759427718134482}}
 
 for scenario, setting in scenarios.items():
     print(f"{'-' * 100}")
@@ -21,7 +21,9 @@ for scenario, setting in scenarios.items():
 
     print(f"Hash for scenario: {hs}")
 
-    figures = ...
+    figures = []
+
+    figures.append(fcc_over_distortion(df))
 
     save_figures(
         figures=figures, name=scenario, experiment_id=setting["experiment_id"], hash=hs

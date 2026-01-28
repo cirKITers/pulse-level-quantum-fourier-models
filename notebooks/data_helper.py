@@ -115,13 +115,25 @@ def generate_df(run_ids: List[str]):
 
         # get all relevant paramters
         df.loc[it, "ansatz"] = run.data.params["model.circuit_type"]
-        df.loc[it, "encoding_strategy"] = run.data.params["model.encoding_strategy"]
         df.loc[it, "data.seed"] = run.data.params["data.seed"]
         df.loc[it, "model.seed"] = run.data.params["model.seed"]
         df.loc[it, "fcc.seed"] = run.data.params["fcc.seed"]
+        df.loc[it, "fcc.pulse_params_variance"] = run.data.params[
+            "fcc.pulse_params_variance"
+        ]
 
+        frequencies = sorted(
+            [
+                float(f_key.replace("coeff.var.f", ""))
+                for f_key in run.data.metrics.keys()
+                if "coeff.var.f" in f_key
+            ]
+        )
+
+        for f in frequencies:
+            df.loc[it, f"coeff.var.f{f}"] = run.data.metrics[f"coeff.var.f{f}"]
         # get metrics
         df.loc[it, "fcc"] = run.data.metrics["fcc"]
-        df.loc[it, "train_mse"] = run.data.metrics["train_mse"]
+        # df.loc[it, "train_mse"] = run.data.metrics["train_mse"]
 
     return df
