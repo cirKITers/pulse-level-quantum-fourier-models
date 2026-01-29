@@ -1,11 +1,11 @@
 from data_helper import get_run_ids, cache_df
-from viz_helper import save_figures, fcc_over_distortion
+from viz_helper import save_figures, coeff_var_over_distortion, fcc_over_distortion
 
 # enable caching?
 cache = False
 
 # scenarios for plotting
-scenarios = {"study-1": {"experiment_id": 896759427718134482}}
+scenarios = {"study-1": {"experiment_id": 896759427718134482, "max_distortion": 0.02}}
 
 for scenario, setting in scenarios.items():
     print(f"{'-' * 100}")
@@ -23,7 +23,10 @@ for scenario, setting in scenarios.items():
 
     figures = []
 
-    figures.append(fcc_over_distortion(df))
+    figures.append(fcc_over_distortion(df, max_distortion=setting["max_distortion"]))
+    figures.append(
+        coeff_var_over_distortion(df, max_distortion=setting["max_distortion"])
+    )
 
     save_figures(
         figures=figures, name=scenario, experiment_id=setting["experiment_id"], hash=hs
