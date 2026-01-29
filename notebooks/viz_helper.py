@@ -48,7 +48,7 @@ def save_figures(
         fig.write_image(filename, scale=scale)
 
 
-def coeff_var_over_distortion(df: pd.DataFrame, max_distortion):
+def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Given a dataframe with variances for different frequencies
     and different distortions, plot the variances over the frequencies
@@ -92,7 +92,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion):
         fig.add_scatter(
             x=freq_indices,
             y=means,
-            error_y=dict(type="data", array=stds, visible=True),
+            error_y=dict(type="data", array=stds, visible=show_error),
             mode="lines+markers",
             name=f"Variance {distortion}",
             marker=dict(
@@ -114,7 +114,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion):
     return fig
 
 
-def fcc_over_distortion(df: pd.DataFrame, max_distortion):
+def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Given a dataframe with fccs for different distortions,
     plot the fcc over the distortions
@@ -127,27 +127,35 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion):
     # Filter rows where pulse_params_variance is less than max_distortion
     filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion]
 
-    # average the fcc over different seeds for a given distortion
-    grouped_df = filtered_df.groupby("fcc.pulse_params_variance").fcc
-    mean_fcc = grouped_df.mean()
-    std_fcc = grouped_df.std()
+    # Get unique circuit types
+    ansatzes = sorted(filtered_df["ansatz"].unique())
 
-    fig.add_scatter(
-        x=mean_fcc.index,
-        y=mean_fcc.values,
-        error_y=dict(type="data", array=std_fcc.values, visible=True),
-        mode="lines+markers",
-        marker=dict(
-            size=design.marker_size,
-            line=dict(width=design.marker_line_width),
-            color=design.marker_a_color,
-            opacity=design.marker_a_opacity,
-        ),
-    )
+    # Create a trace for each circuit type
+    for ansatz in ansatzes:
+        # Filter data for this circuit type
+        circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
+
+        # average the fcc over different seeds for a given distortion
+        grouped_df = circuit_df.groupby("fcc.pulse_params_variance").fcc
+        mean_fcc = grouped_df.mean()
+        std_fcc = grouped_df.std()
+
+        fig.add_scatter(
+            x=mean_fcc.index,
+            y=mean_fcc.values,
+            error_y=dict(type="data", array=std_fcc.values, visible=show_error),
+            mode="lines+markers",
+            name=f"{ansatz}",
+            marker=dict(
+                size=design.marker_size,
+                line=dict(width=design.marker_line_width),
+            ),
+            line=dict(color=next(design.main_colors_it)),
+        )
 
     fig.update_layout(
         title="FCC over Pulse Parameter Variances",
-        xaxis_title="Variance",
+        xaxis_title="Pulse Parameter Variances",
         yaxis_title="FCC",
         template=design.template,
         font=dict(size=design.font_size),

@@ -5,7 +5,13 @@ from viz_helper import save_figures, coeff_var_over_distortion, fcc_over_distort
 cache = False
 
 # scenarios for plotting
-scenarios = {"study-1": {"experiment_id": 896759427718134482, "max_distortion": 0.02}}
+scenarios = {
+    "study-1": {
+        "experiment_id": 896759427718134482,
+        "max_distortion": 0.02,
+        "show_error": True,
+    }
+}
 
 for scenario, setting in scenarios.items():
     print(f"{'-' * 100}")
@@ -21,12 +27,25 @@ for scenario, setting in scenarios.items():
 
     print(f"Hash for scenario: {hs}")
 
-    figures = []
+    if scenario == "study-1":
+        figures = []
 
-    figures.append(fcc_over_distortion(df, max_distortion=setting["max_distortion"]))
-    figures.append(
-        coeff_var_over_distortion(df, max_distortion=setting["max_distortion"])
-    )
+        figures.append(
+            fcc_over_distortion(
+                df,
+                max_distortion=setting["max_distortion"],
+                show_error=setting["show_error"],
+            ),
+        )
+        figures.append(
+            coeff_var_over_distortion(
+                df,
+                max_distortion=setting["max_distortion"],
+                show_error=setting["show_error"],
+            )
+        )
+    elif scenario == "study-2":
+        pass
 
     save_figures(
         figures=figures, name=scenario, experiment_id=setting["experiment_id"], hash=hs
