@@ -1,6 +1,10 @@
 from kedro.pipeline import Node, Pipeline
 
-from pulse_level_qfms.pipelines.processing.nodes import calculate_fcc, train_model
+from pulse_level_qfms.pipelines.processing.nodes import (
+    calculate_fcc,
+    train_model,
+    evaluate_fidelity,
+)
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -39,5 +43,19 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "fcc": "fcc",
                 },
             ),
+            # Node(
+            #     evaluate_fidelity,
+            #     name="evaluate_fidelity",
+            #     tags=["processing"],
+            #     inputs=[
+            #         "model",
+            #         "params:fcc.seed",
+            #         "params:fcc.n_samples",
+            #         "params:fcc.pulse_params_variance",
+            #     ],
+            #     outputs={
+            #         "fidelity": "fidelity",
+            #     },
+            # ),
         ]
     )

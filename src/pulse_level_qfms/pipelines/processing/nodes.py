@@ -240,3 +240,30 @@ def train_model(
     return {
         "model": model,
     }
+
+
+def evaluate_fidelity(
+    model: Model,
+    seed: int,
+    n_samples: int,
+    pulse_params_variance: float,
+):
+    log.info(f"Seed for fidelity check: {seed}")
+
+    model.initialize_params(rng=np.random.default_rng(seed), repeat=n_samples)
+
+    unitary_states = model(execution_type="density")
+    pulse_states = model(
+        pulse_params=np.random.normal(
+            loc=1.0, scale=pulse_params_variance, size=model.pulse_params.shape
+        ),
+        execution_type="density",
+    )
+
+    fidelity = qml.math.fidelity(unitary_states, pulse_states)
+
+    mlflow.log_metric("fidelity", fidelity)
+
+    return {
+        "fidelity": fidelity,
+    }
