@@ -71,6 +71,8 @@ class PulseFCC(FCC):
 
             rng = np.random.default_rng(seed)
 
+            # initialize model with new parameters and use batching if
+            # "unitary" is specified in sampling axis
             if "unitary" in sample_axis:
                 model.initialize_params(rng=rng, repeat=total_samples)
                 log.info(f"Sampling unitary parameters")
@@ -80,7 +82,9 @@ class PulseFCC(FCC):
 
             scaler = None
 
+            # specifying "pulse" in sampling axis...
             if "pulse" in sample_axis:
+                # either only distort pulse parameters...
                 if "unitary" in sample_axis:
                     if pulse_params_variance == 0.0:
                         log.info(f"Using default pulse parameters")
@@ -91,6 +95,7 @@ class PulseFCC(FCC):
                             size=model.pulse_params.shape,
                         )
                         log.info(f"Distorting pulse parameters")
+                # or actually samples them if we didn't do that before
                 else:
                     scaler = rng.normal(
                         loc=1.0,
@@ -104,7 +109,7 @@ class PulseFCC(FCC):
         else:
             total_samples = 1
 
-        # always a pulse simulation
+        # always a pulse simulation for coefficient calculation (consistency)
         coeffs, freqs = Coefficients.get_spectrum(
             model,
             shift=True,
@@ -114,9 +119,11 @@ class PulseFCC(FCC):
             **kwargs,
         )
 
+        # calculate variances and means over all samples (preserve freq. axis)
         variances = np.var(np.abs(coeffs), axis=1)
         means = np.mean(np.abs(coeffs), axis=1)
 
+        # log values for each frequency component
         for freq in freqs:
             mlflow.log_metric(f"coeff.mean.f{freq}", variances[int(freq)])
             mlflow.log_metric(f"coeff.var.f{freq}", means[int(freq)])
@@ -140,6 +147,7 @@ def calculate_fcc(
 ):
     log.info(f"Seed for FCC: {seed}")
 
+    # call our modified class to calculate the fourier fingerprint
     fourier_fingerprint, _ = PulseFCC.get_fourier_fingerprint(
         model,
         n_samples,
@@ -152,6 +160,7 @@ def calculate_fcc(
         pulse_params_variance=pulse_params_variance,
     )
 
+    # and finally the fcc
     fcc = PulseFCC.calculate_fcc(fourier_fingerprint)
 
     mlflow.log_metric("fcc", fcc)
@@ -249,20 +258,25 @@ def evaluate_fidelity(
     pulse_params_variance: float,
 ):
     log.info(f"Seed for fidelity check: {seed}")
+    log.info(f"Using {n_samples} samples for fidelity check")
 
     model.initialize_params(rng=np.random.default_rng(seed), repeat=n_samples)
 
+    # calculate density matrices for unitary and pulse circuits
     unitary_states = model(execution_type="density")
     pulse_states = model(
         pulse_params=np.random.normal(
             loc=1.0, scale=pulse_params_variance, size=model.pulse_params.shape
         ),
+        gate_mode="pulse",
         execution_type="density",
     )
 
+    # calculate overlap
     fidelity = qml.math.fidelity(unitary_states, pulse_states)
 
-    mlflow.log_metric("fidelity", fidelity)
+    # average over all samples
+    mlflow.log_metric("fidelity", np.mean(fidelity))
 
     return {
         "fidelity": fidelity,

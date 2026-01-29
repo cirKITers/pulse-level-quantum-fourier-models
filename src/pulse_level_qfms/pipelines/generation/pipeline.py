@@ -7,7 +7,7 @@ from pulse_level_qfms.pipelines.generation.nodes import (
 )
 
 
-def create_pipeline(**kwargs) -> Pipeline:
+def create_model_pipeline(**kwargs) -> Pipeline:
     return Pipeline(
         [
             Node(
@@ -30,6 +30,13 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "model": "model",
                 },
             ),
+        ]
+    )
+
+
+def create_data_pipeline(**kwargs) -> Pipeline:
+    return Pipeline(
+        [
             Node(
                 generate_fourier_series,
                 name="generate_fourier_series",

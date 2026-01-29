@@ -17,5 +17,44 @@
             "console": "integratedTerminal",
             "justMyCode": false
         },
+        {
+            "name": "FCC",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "kedro",
+            "args": [
+                "run",
+                "--pipeline",
+                "fcc"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Fidelity",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "kedro",
+            "args": [
+                "run",
+                "--pipeline",
+                "fidelity"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Training",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "kedro",
+            "args": [
+                "run",
+                "--pipeline",
+                "training"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
     ]
 }
