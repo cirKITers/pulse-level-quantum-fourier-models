@@ -115,7 +115,9 @@ def generate_df(run_ids: List[str]):
 
         # get all relevant paramters
         df.loc[it, "ansatz"] = run.data.params["model.circuit_type"]
-        df.loc[it, "data.seed"] = int(run.data.params["data.seed"])
+        if "data.seed" in run.data.params:
+            df.loc[it, "data.seed"] = int(run.data.params["data.seed"])
+
         df.loc[it, "model.seed"] = int(run.data.params["model.seed"])
         df.loc[it, "fcc.seed"] = int(run.data.params["fcc.seed"])
         df.loc[it, "fcc.pulse_params_variance"] = float(
@@ -136,7 +138,13 @@ def generate_df(run_ids: List[str]):
                     run.data.metrics[f"coeff.var.f{f}"]
                 )
         # get metrics
-        df.loc[it, "fcc"] = float(run.data.metrics["fcc"])
-        # df.loc[it, "train_mse"] = run.data.metrics["train_mse"]
+        if "fcc" in run.data.metrics:
+            df.loc[it, "fcc"] = float(run.data.metrics["fcc"])
+
+        if "train_mse" in run.data.metrics:
+            df.loc[it, "train_mse"] = run.data.metrics["train_mse"]
+
+        if "fidelity" in run.data.metrics:
+            df.loc[it, "fidelity"] = float(run.data.metrics["fidelity"])
 
     return df

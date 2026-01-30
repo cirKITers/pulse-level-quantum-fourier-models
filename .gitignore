@@ -1,5 +1,6 @@
 # remove when in a stable phase
 results
+mlruns_bckp
 
 ##########################
 # KEDRO PROJECT
