@@ -25,6 +25,7 @@ dependencies = [
     "jax==0.4.28",
     "jaxlib==0.4.28",
     "optax==0.2.5",
+    "marimo>=0.19.7",
 ]
 
 [[tool.uv.index]]
