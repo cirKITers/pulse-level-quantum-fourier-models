@@ -6,6 +6,19 @@ from rich.progress import track
 from typing import List
 
 
+def get_experiments_by_name(experiment_name: str):
+    """
+    Retrieves a list of experiments with the given name.
+
+    Args:
+        experiment_name (str): The name of the experiment to search for.
+
+    Returns:
+        List[mlflow.entities.Experiment]: A list of experiments with the given name.
+    """
+    return mlflow.search_experiments(filter_string=f"name='{experiment_name}'")
+
+
 def get_run_ids(experiment_id: str):
     """
     Retrieves a list of run ids from mlflow for the given experiment id.
@@ -44,6 +57,41 @@ def generate_hash(run_ids: List[str]):
     """
     hs = hashlib.md5(repr(run_ids).encode("utf-8")).hexdigest()
     return hs
+
+
+def cache_df(run_ids: List[str], df=None):
+    """
+    This function takes a list of run ids and an optional dataframe.
+    It calculates the hash of the run ids and checks if a dataframe with the same hash already exists.
+    If it does, it reads the dataframe from the cache and returns it.
+    If it doesn't, it generates the dataframe using generate_df and saves it to the cache before returning it.
+
+    Args:
+        run_ids (List[str]): A list of run ids to generate the dataframe from.
+        df (pd.DataFrame, optional): An optional dataframe to use instead of generating a new one.
+
+    Returns:
+        pd.DataFrame: The generated dataframe.
+    """
+
+    # calculate hash
+    hs = generate_hash(run_ids)
+
+    # save df to cache
+    path = f".cache/{hs}/"
+    os.makedirs(path, exist_ok=True)
+
+    if os.path.exists(f"{path}df.csv"):
+        print(f"DF already exists: {hs}")
+        df = pd.read_csv(f"{path}df.csv")
+    else:
+        if df is None:
+            return generate_df(run_ids), hs
+        df.to_csv(f"{path}df.csv")
+        print(f"Created DF cache: {hs}")
+        df = pd.read_csv(f"{path}df.csv")
+
+    return df, hs
 
 
 def cache_df(run_ids: List[str], df=None):
