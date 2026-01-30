@@ -1,9 +1,8 @@
-from data_helper import get_run_ids, cache_df
+from data_helper import get_experiments_by_name, get_run_ids, cache_df
 from viz_helper import (
     save_figures,
-    coeff_var_over_distortion,
-    fcc_over_distortion,
-    fidelity_over_distortion,
+    viz_study_1,
+    viz_study_2,
 )
 
 # enable caching?
@@ -11,13 +10,13 @@ cache = False
 
 # scenarios for plotting
 scenarios = {
-    # "study-1": {
-    #     "experiment_id": 896759427718134482,
-    #     "max_distortion": 0.02,
-    #     "show_error": True,
-    # },
+    "study-1": {
+        "experiment_name": "study-1-0",
+        "max_distortion": 0.02,
+        "show_error": True,
+    },
     "study-2": {
-        "experiment_id": 296546939579850824,
+        "experiment_name": "study-2-0",
         "max_distortion": 0.02,
         "show_error": True,
     },
@@ -28,6 +27,14 @@ for scenario, setting in scenarios.items():
     print(f"\nScenario: {scenario}\n")
     print(f"{'-' * 100}")
 
+    if not "experiment-id" in setting:
+        print(
+            f"No experiment id specified, searching for experiment with name: {setting['experiment-name']}"
+        )
+        setting["experiment-id"] = get_experiments_by_name(
+            experiment_name=setting.get("experiment-name", "Default")
+        )[0].experiment_id
+
     # Obtain all run ids for the specified experiment
     run_ids = get_run_ids(setting["experiment_id"])
 
@@ -37,32 +44,29 @@ for scenario, setting in scenarios.items():
 
     print(f"Hash for scenario: {hs}")
 
-    figures = []
     if scenario == "study-1":
-
-        figures.append(
-            fcc_over_distortion(
-                df,
-                max_distortion=setting["max_distortion"],
-                show_error=setting["show_error"],
-            ),
+        figures = viz_study_1(
+            df,
+            max_distortion=setting["max_distortion"],
+            show_error=setting["show_error"],
         )
-        figures.append(
-            coeff_var_over_distortion(
-                df,
-                max_distortion=setting["max_distortion"],
-                show_error=setting["show_error"],
-            )
+
+        save_figures(
+            figures=figures,
+            name=scenario,
+            experiment_id=setting["experiment_id"],
+            hash=hs,
         )
     elif scenario == "study-2":
-        figures.append(
-            fidelity_over_distortion(
-                df,
-                max_distortion=setting["max_distortion"],
-                show_error=setting["show_error"],
-            )
+        figures = viz_study_2(
+            df,
+            max_distortion=setting["max_distortion"],
+            show_error=setting["show_error"],
         )
 
     save_figures(
-        figures=figures, name=scenario, experiment_id=setting["experiment_id"], hash=hs
+        figures=figures,
+        name=scenario,
+        experiment_id=setting["experiment_id"],
+        hash=hs,
     )

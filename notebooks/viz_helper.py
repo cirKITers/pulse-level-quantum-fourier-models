@@ -21,11 +21,18 @@ class design:
     marker_b_color = "#DF9B1B"
     legend_color = "#002D4C"
     colorscale = "Sunset"
-    symbols_iterator = iter(
-        ["circle", "square", "diamond", "cross", "x", "triangle-up", "hexagon", "star"]
-    )
-    main_colors_it = iter(plotly.colors.qualitative.Dark2)
-    sec_colors_it = iter(plotly.colors.qualitative.Pastel2)
+    symbols_lst = [
+        "circle",
+        "square",
+        "diamond",
+        "cross",
+        "x",
+        "triangle-up",
+        "hexagon",
+        "star",
+    ]
+    main_colors_lst = plotly.colors.qualitative.Dark2
+    sec_colors_lst = plotly.colors.qualitative.Pastel2
 
 
 def save_figures(
@@ -46,6 +53,23 @@ def save_figures(
         filename = f"{path}{name}-{it}.pdf"
         print(f"Saving figure to {filename}")
         fig.write_image(filename, scale=scale)
+
+
+def viz_study_1(df, max_distortion, show_error):
+    figures = []
+
+    figures.append(fcc_over_distortion(df, max_distortion, show_error))
+    figures.append(coeff_var_over_distortion(df, max_distortion, show_error))
+
+    return figures
+
+
+def viz_study_2(df, max_distortion, show_error):
+    figures = []
+
+    figures.append(fidelity_over_distortion(df, max_distortion, show_error))
+
+    return figures
 
 
 def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
@@ -70,6 +94,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     # Get unique distortion values
     distortions = sorted(df["fcc.pulse_params_variance"].unique())
+    color_it = iter(design.main_colors_lst)
 
     # Create a trace for each distortion level
     for it, distortion in enumerate(distortions):
@@ -100,7 +125,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
                 line=dict(width=design.marker_line_width),
                 # symbol=next(design.symbols_iterator),
             ),
-            line=dict(color=next(design.main_colors_it)),
+            line=dict(color=next(color_it)),
         )
 
     fig.update_layout(
@@ -129,6 +154,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
+    color_it = iter(design.main_colors_lst)
 
     # Create a trace for each circuit type
     for ansatz in ansatzes:
@@ -150,7 +176,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
                 size=design.marker_size,
                 line=dict(width=design.marker_line_width),
             ),
-            line=dict(color=next(design.main_colors_it)),
+            line=dict(color=next(color_it)),
         )
 
     fig.update_layout(
@@ -179,6 +205,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
+    color_it = iter(design.main_colors_lst)
 
     # Create a trace for each circuit type
     for ansatz in ansatzes:
@@ -200,7 +227,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
                 size=design.marker_size,
                 line=dict(width=design.marker_line_width),
             ),
-            line=dict(color=next(design.main_colors_it)),
+            line=dict(color=next(color_it)),
         )
 
     fig.update_layout(
