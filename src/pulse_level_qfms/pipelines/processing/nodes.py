@@ -120,18 +120,15 @@ class PulseFCC(FCC):
         )
 
         # calculate variances and means over all samples (preserve freq. axis)
-        variances = np.var(np.abs(coeffs), axis=1)
-        means = np.mean(np.abs(coeffs), axis=1)
+        variances = np.abs(coeffs).var(axis=1)
+        means = np.abs(coeffs).mean(axis=1)
 
         # log values for each frequency component
-        for freq in freqs:
-            mlflow.log_metric(f"coeff.mean.f{freq}", variances[int(freq)])
-            mlflow.log_metric(f"coeff.var.f{freq}", means[int(freq)])
+        for freq, var, mean in zip(freqs, variances, means, strict=True):
+            mlflow.log_metric(f"coeff.mean.f{freq}", mean)
+            mlflow.log_metric(f"coeff.var.f{freq}", var)
 
         return model.params, coeffs, freqs
-
-    def _collect_pulse_params(self, model: Model):
-        return model.params
 
 
 # overwrite static method
