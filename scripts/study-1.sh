@@ -19,7 +19,7 @@ do
                 sleep 5
             done
 
-            echo "--- Variance $variance, Seed $seed ---"
+            echo "--- $circuit Ansatz, Variance $variance, Seed $seed ---"
             uv run kedro run --pipeline "fcc" --params="fcc.seed=$seed,fcc.pulse_params_variance=$variance,model.circuit_type=$circuit" &
 
             sleep 60
