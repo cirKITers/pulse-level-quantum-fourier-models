@@ -68,6 +68,7 @@ def viz_study_2(df, max_distortion, show_error):
     figures = []
 
     figures.append(fidelity_over_distortion(df, max_distortion, show_error))
+    figures.append(trace_distance_over_distortion(df, max_distortion, show_error))
 
     return figures
 
@@ -213,14 +214,14 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
         # average the fidelity over different seeds for a given distortion
-        grouped_df = circuit_df.groupby("fcc.pulse_params_variance").fidelity
-        mean_fidelity = grouped_df.mean()
-        std_fidelity = grouped_df.std()
+        grouped_df = circuit_df.groupby("fcc.pulse_params_variance")["fidelity"]
+        mean = grouped_df.mean()
+        std = grouped_df.std()
 
         fig.add_scatter(
-            x=mean_fidelity.index,
-            y=mean_fidelity.values,
-            error_y=dict(type="data", array=std_fidelity.values, visible=show_error),
+            x=mean.index,
+            y=mean.values,
+            error_y=dict(type="data", array=std.values, visible=show_error),
             mode="lines+markers",
             name=f"{ansatz}",
             marker=dict(
@@ -234,6 +235,57 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         title="Fidelity over Pulse Parameter Variances",
         xaxis_title="Pulse Parameter Variances",
         yaxis_title="Fidelity",
+        template=design.template,
+        font=dict(size=design.font_size),
+    )
+
+    return fig
+
+
+def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error):
+    """
+    Given a dataframe with fccs for different distortions,
+    plot the fcc over the distortions
+
+    Args:
+        df (pd.DataFrame): _description_
+    """
+    fig = go.Figure()
+
+    # Filter rows where pulse_params_variance is less than max_distortion
+    filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion]
+
+    # Get unique circuit types
+    ansatzes = sorted(filtered_df["ansatz"].unique())
+    color_it = iter(design.main_colors_lst)
+
+    # Create a trace for each circuit type
+    for ansatz in ansatzes:
+        # Filter data for this circuit type
+        circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
+
+        # average the fidelity over different seeds for a given distortion
+        grouped_df = circuit_df.groupby("fcc.pulse_params_variance")["trace-distance"]
+        mean = grouped_df.mean()
+        std = grouped_df.std()
+
+        fig.add_scatter(
+            x=mean.index,
+            y=mean.values,
+            error_y=dict(type="data", array=std.values, visible=show_error),
+            mode="lines+markers",
+            name=f"{ansatz}",
+            marker=dict(
+                size=design.marker_size,
+                line=dict(width=design.marker_line_width),
+            ),
+            line=dict(color=next(color_it)),
+        )
+
+    fig.update_layout(
+        title="Fidelity over Pulse Parameter Variances",
+        xaxis_title="Pulse Parameter Variances",
+        yaxis_title="Trace Distance",
         template=design.template,
         font=dict(size=design.font_size),
     )

@@ -271,9 +271,11 @@ def evaluate_fidelity(
 
     # calculate overlap
     fidelity = qml.math.fidelity(unitary_states, pulse_states)
+    trace_distance = qml.math.trace_distance(unitary_states, pulse_states)
 
     # average over all samples
     mlflow.log_metric("fidelity", np.mean(fidelity))
+    mlflow.log_metric("trace-distance", np.mean(trace_distance))
 
     return {
         "fidelity": fidelity,
