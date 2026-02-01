@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from typing import List
 import pandas as pd
 from copy import deepcopy
+import string
 
 from data_helper import generate_hash
 
@@ -45,12 +46,12 @@ def save_figures(
     # use the same hashing strategy as in data_helper
     path = f"results/{experiment_id}/{hash}/"
     os.makedirs(path, exist_ok=True)
-
+    abc = list(string.ascii_lowercase)
     for it, fig in enumerate(figures):
         # applying last changes
         fig.update_layout()
 
-        filename = f"{path}{name}-{it}.pdf"
+        filename = f"{path}{name}-{abc[it]}.pdf"
         print(f"Saving figure to {filename}")
         fig.write_image(filename, scale=scale)
 
