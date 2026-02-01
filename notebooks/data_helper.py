@@ -195,4 +195,7 @@ def generate_df(run_ids: List[str]):
         if "fidelity" in run.data.metrics:
             df.loc[it, "fidelity"] = float(run.data.metrics["fidelity"])
 
+        if "trace-distance" in run.data.metrics:
+            df.loc[it, "trace-distance"] = float(run.data.metrics["trace-distance"])
+
     return df
