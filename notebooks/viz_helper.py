@@ -36,6 +36,15 @@ class design:
     sec_colors_lst = plotly.colors.qualitative.Pastel2
 
 
+def circuit_name_to_str(circuit_name: str):
+    if "Circuit" in circuit_name:
+        circuit_name = circuit_name.replace("Circuit", "C").replace("_", " ")
+
+    circuit_name = circuit_name.replace("_", " ")
+
+    return circuit_name
+
+
 def save_figures(
     figures: List[go.Figure],
     name: str,
@@ -173,7 +182,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             y=mean_fcc.values,
             error_y=dict(type="data", array=std_fcc.values, visible=show_error),
             mode="lines+markers",
-            name=f"{ansatz}",
+            name=f"{circuit_name_to_str(ansatz)}",
             marker=dict(
                 size=design.marker_size,
                 line=dict(width=design.marker_line_width),
@@ -224,7 +233,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             y=mean.values,
             error_y=dict(type="data", array=std.values, visible=show_error),
             mode="lines+markers",
-            name=f"{ansatz}",
+            name=f"{circuit_name_to_str(ansatz)}",
             marker=dict(
                 size=design.marker_size,
                 line=dict(width=design.marker_line_width),
@@ -275,7 +284,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
             y=mean.values,
             error_y=dict(type="data", array=std.values, visible=show_error),
             mode="lines+markers",
-            name=f"{ansatz}",
+            name=f"{circuit_name_to_str(ansatz)}",
             marker=dict(
                 size=design.marker_size,
                 line=dict(width=design.marker_line_width),
