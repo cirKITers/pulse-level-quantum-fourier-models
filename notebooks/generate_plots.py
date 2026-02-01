@@ -11,12 +11,12 @@ cache = False
 # scenarios for plotting
 scenarios = {
     "study-1": {
-        "experiment_name": "study-1-0",
+        "experiment_name": "study-1-1",
         "max_distortion": 0.02,
         "show_error": True,
     },
     "study-2": {
-        "experiment_name": "study-2-0",
+        "experiment_name": "study-2-1",
         "max_distortion": 0.02,
         "show_error": True,
     },
@@ -29,10 +29,10 @@ for scenario, setting in scenarios.items():
 
     if not "experiment-id" in setting:
         print(
-            f"No experiment id specified, searching for experiment with name: {setting['experiment-name']}"
+            f"No experiment id specified, searching for experiment with name: {setting['experiment_name']}"
         )
-        setting["experiment-id"] = get_experiments_by_name(
-            experiment_name=setting.get("experiment-name", "Default")
+        setting["experiment_id"] = get_experiments_by_name(
+            experiment_name=setting.get("experiment_name", "Default")
         )[0].experiment_id
 
     # Obtain all run ids for the specified experiment
@@ -51,12 +51,6 @@ for scenario, setting in scenarios.items():
             show_error=setting["show_error"],
         )
 
-        save_figures(
-            figures=figures,
-            name=scenario,
-            experiment_id=setting["experiment_id"],
-            hash=hs,
-        )
     elif scenario == "study-2":
         figures = viz_study_2(
             df,
