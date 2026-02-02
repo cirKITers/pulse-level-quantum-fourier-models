@@ -32,8 +32,9 @@ class design:
         "hexagon",
         "star",
     ]
-    main_colors_lst = plotly.colors.qualitative.Dark2
+    prim_colors_lst = plotly.colors.qualitative.Dark2
     sec_colors_lst = plotly.colors.qualitative.Pastel2
+    seq_colors = plotly.colors.sequential.dense_r
 
 
 def circuit_name_to_str(circuit_name: str):
@@ -85,7 +86,7 @@ def viz_study_2(df, max_distortion, show_error):
     return figures
 
 
-def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
+def _coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Given a dataframe with variances for different frequencies
     and different distortions, plot the variances over the frequencies
@@ -116,7 +117,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     # Create color mapping for distortions and symbol mapping for circuit types
     distortion_color_map = {
-        dist: color for dist, color in zip(distortions, design.main_colors_lst)
+        dist: color for dist, color in zip(distortions, design.prim_colors_lst)
     }
     circuit_symbol_map = {
         ct: symbol for ct, symbol in zip(circuit_types, design.symbols_lst)
@@ -238,6 +239,116 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     return fig
 
 
+def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
+    """
+    Given a dataframe with fccs for different distortions,
+    plot the fcc over the distortions
+
+    Args:
+        df (pd.DataFrame): _description_
+    """
+    fig = go.Figure()
+
+    # Extract frequency indices from column names
+    coeff_cols = [col for col in df.columns if col.startswith("coeff.var.f")]
+    freq_indices = sorted([float(col.split("coeff.var.f")[1]) for col in coeff_cols])
+
+    # Filter rows where pulse_params_variance is less than max_distortion
+    filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion]
+
+    # Get unique circuit types
+    ansatzes = sorted(filtered_df["ansatz"].unique())
+    variances = sorted(filtered_df["fcc.pulse_params_variance"].unique())
+
+    symbol_it = iter(design.symbols_lst)
+    # Create a trace for each circuit type
+    for ansatz in ansatzes:
+
+        color_it = iter(
+            plotly.colors.sample_colorscale(design.seq_colors, len(variances))
+        )
+        symbol = next(symbol_it)
+        for variance in variances:
+            # Filter data for this circuit type
+            circuit_distortion_df = filtered_df[filtered_df["ansatz"] == ansatz][
+                filtered_df["fcc.pulse_params_variance"] == variance
+            ]
+
+            means = (
+                circuit_distortion_df[[f"coeff.var.f{idx}" for idx in freq_indices]]
+                .mean()
+                .values
+            )
+            stds = (
+                circuit_distortion_df[[f"coeff.var.f{idx}" for idx in freq_indices]]
+                .std()
+                .values
+            )
+
+            fig.add_scatter(
+                x=freq_indices,
+                y=means,
+                mode="lines+markers",
+                showlegend=False,
+                marker=dict(
+                    size=design.marker_size,
+                    line=dict(width=design.marker_line_width),
+                    symbol=symbol,
+                ),
+                line=dict(color=next(color_it)),
+            )
+
+    symbol_it = iter(design.symbols_lst)
+    for ansatz in ansatzes:
+        fig.add_scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            name=f"{circuit_name_to_str(ansatz)}",
+            legendgroup=f"circuit_{ansatz}",
+            showlegend=True,
+            marker=dict(
+                size=design.marker_size,
+                line=dict(width=design.marker_line_width),
+                symbol=next(symbol_it),
+                color="gray",
+            ),
+        )
+
+    color_it = iter(plotly.colors.sample_colorscale(design.seq_colors, len(variances)))
+    for it, variance in enumerate(variances):
+        color = next(color_it)
+
+        if it > 0 and it < len(variances) - 1:
+            continue
+        fig.add_scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            name=f"σ²={variance}",
+            legendgroup=f"variance_{variance}",
+            showlegend=True,
+            marker=dict(
+                size=design.marker_size,
+                line=dict(width=design.marker_line_width),
+                symbol="circle",
+                color=color,
+            ),
+        )
+
+    fig.update_layout(
+        title="Coeff. Var. over Pulse Parameter Var.",
+        xaxis_title="Pulse Parameter Variances",
+        yaxis_title="Coefficient Variance",
+        template=design.template,
+        font=dict(size=design.font_size),
+    )
+
+    fig.update_yaxes(type="log")
+
+    return fig
+
+
 def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Given a dataframe with fccs for different distortions,
@@ -253,7 +364,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
-    color_it = iter(design.main_colors_lst)
+    color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
     for ansatz in ansatzes:
@@ -304,7 +415,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
-    color_it = iter(design.main_colors_lst)
+    color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
     for ansatz in ansatzes:
@@ -330,9 +441,9 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         )
 
     fig.update_layout(
-        title="Fidelity over Pulse Parameter Variances",
+        title="Trace Distance over Pulse Parameter Variances",
         xaxis_title="Pulse Parameter Variances",
-        yaxis_title="Fidelity",
+        yaxis_title="Trace Distance",
         template=design.template,
         font=dict(size=design.font_size),
     )
@@ -355,7 +466,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
-    color_it = iter(design.main_colors_lst)
+    color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
     for ansatz in ansatzes:
