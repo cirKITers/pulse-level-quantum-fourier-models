@@ -11,7 +11,7 @@
 #
 # expected duration of the job
 #              hh:mm:ss
-#SBATCH --time=10:00:00
+#SBATCH --time=15:00:00
 # 
 # partition the job will run on
 #SBATCH --partition cpu
