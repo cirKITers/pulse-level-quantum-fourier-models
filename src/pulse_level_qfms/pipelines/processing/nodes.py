@@ -89,20 +89,39 @@ class PulseFCC(FCC):
                     if pulse_params_variance == 0.0:
                         log.info(f"Using default pulse parameters")
                     else:
+                        # assimilate shape for the input parameters
                         scaler = rng.normal(
                             loc=1.0,
                             scale=pulse_params_variance,
-                            size=model.pulse_params.shape,
+                            size=(
+                                *model.pulse_params.shape[:-1],
+                                total_samples * np.prod(model.degree),
+                            ),
                         )
-                        log.info(f"Distorting pulse parameters")
+                        # disable repeat for pulse parameters
+                        model.repeat_batch_axis = [True, True, False]
+                        log.info(f"Sampling (pulse+std) parameters")
                 # or actually samples them if we didn't do that before
                 else:
                     scaler = rng.normal(
                         loc=1.0,
                         scale=pulse_params_variance,
-                        size=(*model.pulse_params.shape[:-1], total_samples),
+                        size=(
+                            *model.pulse_params.shape[:-1],
+                            total_samples,
+                        ),
                     )
                     log.info(f"Sampling pulse parameters")
+            else:
+                if pulse_params_variance == 0.0:
+                    log.info(f"Using default pulse parameters")
+                else:
+                    scaler = rng.normal(
+                        loc=1.0,
+                        scale=pulse_params_variance,
+                        size=model.pulse_params.shape,
+                    )
+                    log.info(f"Distorting pulse parameters")
 
             log.info(f"Using {total_samples} samples for FCC calculation")
 
