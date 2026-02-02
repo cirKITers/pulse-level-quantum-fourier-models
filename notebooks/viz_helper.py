@@ -38,7 +38,9 @@ class design:
 
 def circuit_name_to_str(circuit_name: str):
     if "Circuit" in circuit_name:
-        circuit_name = circuit_name.replace("Circuit", "C").replace("_", " ")
+        circuit_name = circuit_name.replace("Circuit", "C")
+    elif "Hardware_Efficient" in circuit_name:
+        circuit_name = "HEA"
 
     circuit_name = circuit_name.replace("_", " ")
 
@@ -87,57 +89,143 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Given a dataframe with variances for different frequencies
     and different distortions, plot the variances over the frequencies
-    and use different traces for the distortions
+    and use different traces for the distortions. Different circuit types
+    are distinguished by marker shapes.
 
     Args:
-        df (pd.DataFrame): _description_
+        df (pd.DataFrame): DataFrame containing coefficient variances
     """
     fig = go.Figure()
 
     # Extract frequency indices from column names
-    freq_indices = sorted(
-        [
-            float(col.split("coeff.var.f")[1])
-            for col in df.columns
-            if col.startswith("coeff.var.f")
-        ]
+    coeff_cols = [col for col in df.columns if col.startswith("coeff.var.f")]
+    freq_indices = sorted([float(col.split("coeff.var.f")[1]) for col in coeff_cols])
+
+    # Filter by max distortion
+    filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion].copy()
+
+    # Get unique circuit types and distortions
+    circuit_types = (
+        sorted(filtered_df["ansatz"].unique())
+        if "ansatz" in filtered_df.columns
+        else [None]
     )
+    distortions = sorted(filtered_df["fcc.pulse_params_variance"].unique())[
+        :7
+    ]  # Limit to 7
 
-    # Get unique distortion values
-    distortions = sorted(df["fcc.pulse_params_variance"].unique())
-    color_it = iter(design.main_colors_lst)
+    # Create color mapping for distortions and symbol mapping for circuit types
+    distortion_color_map = {
+        dist: color for dist, color in zip(distortions, design.main_colors_lst)
+    }
+    circuit_symbol_map = {
+        ct: symbol for ct, symbol in zip(circuit_types, design.symbols_lst)
+    }
 
-    # Create a trace for each distortion level
-    for it, distortion in enumerate(distortions):
+    # Track which legend entries we've added
+    distortion_legend_added = set()
+    circuit_legend_added = set()
+
+    # Create a trace for each distortion level and circuit type combination
+    for distortion in distortions:
         distortion = float(distortion)
-        if distortion > max_distortion or it > 6:
-            break
+        color = distortion_color_map[distortion]
 
-        # Filter data for this distortion
-        distortion_df = df[df["fcc.pulse_params_variance"] == distortion]
+        # Group by circuit type for this distortion
+        distortion_df = filtered_df[
+            filtered_df["fcc.pulse_params_variance"] == distortion
+        ]
 
-        # Calculate mean and std for each frequency
-        means = []
-        stds = []
-        for freq_idx in freq_indices:
-            col_name = f"coeff.var.f{freq_idx}"
-            means.append(distortion_df[col_name].mean())
-            stds.append(distortion_df[col_name].std())
+        if "ansatz" in distortion_df.columns:
+            for circuit_type in circuit_types:
+                circuit_distortion_df = distortion_df[
+                    distortion_df["ansatz"] == circuit_type
+                ]
 
-        # Add trace with error bars
-        fig.add_scatter(
-            x=freq_indices,
-            y=means,
-            error_y=dict(type="data", array=stds, visible=show_error),
-            mode="lines+markers",
-            name=f"Variance {distortion}",
-            marker=dict(
-                size=design.marker_size,
-                line=dict(width=design.marker_line_width),
-                # symbol=next(design.symbols_iterator),
-            ),
-            line=dict(color=next(color_it)),
-        )
+                # Calculate mean and std for each frequency using pandas
+                means = (
+                    circuit_distortion_df[[f"coeff.var.f{idx}" for idx in freq_indices]]
+                    .mean()
+                    .values
+                )
+                stds = (
+                    circuit_distortion_df[[f"coeff.var.f{idx}" for idx in freq_indices]]
+                    .std()
+                    .values
+                )
+
+                # Determine if this should be shown in legend
+                show_in_legend = (
+                    distortion not in distortion_legend_added
+                    or circuit_type not in circuit_legend_added
+                )
+
+                # Add trace with error bars
+                fig.add_scatter(
+                    x=freq_indices,
+                    y=means,
+                    error_y=dict(type="data", array=stds, visible=show_error),
+                    mode="lines+markers",
+                    name=(
+                        f"σ²={distortion}"
+                        if distortion not in distortion_legend_added
+                        else ""
+                    ),
+                    legendgroup=f"distortion_{distortion}",
+                    showlegend=distortion not in distortion_legend_added,
+                    marker=dict(
+                        size=design.marker_size,
+                        line=dict(width=design.marker_line_width),
+                        symbol=circuit_symbol_map[circuit_type],
+                    ),
+                    line=dict(color=color),
+                )
+
+                distortion_legend_added.add(distortion)
+
+            # Add dummy traces for circuit type legend (shapes only)
+            for circuit_type in circuit_types:
+                if circuit_type not in circuit_legend_added:
+                    fig.add_scatter(
+                        x=[None],
+                        y=[None],
+                        mode="markers",
+                        name=f"{circuit_name_to_str(circuit_type)}",
+                        legendgroup=f"circuit_{circuit_type}",
+                        showlegend=True,
+                        marker=dict(
+                            size=design.marker_size,
+                            line=dict(width=design.marker_line_width),
+                            symbol=circuit_symbol_map[circuit_type],
+                            color="gray",
+                        ),
+                    )
+                    circuit_legend_added.add(circuit_type)
+        else:
+            # Fallback if no circuit type column exists
+            means = (
+                distortion_df[[f"coeff.var.f{idx}" for idx in freq_indices]]
+                .mean()
+                .values
+            )
+            stds = (
+                distortion_df[[f"coeff.var.f{idx}" for idx in freq_indices]]
+                .std()
+                .values
+            )
+
+            fig.add_scatter(
+                x=freq_indices,
+                y=means,
+                error_y=dict(type="data", array=stds, visible=show_error),
+                mode="lines+markers",
+                name=f"σ²={distortion}",
+                marker=dict(
+                    size=design.marker_size,
+                    line=dict(width=design.marker_line_width),
+                ),
+                line=dict(color=color),
+            )
 
     fig.update_layout(
         title="Coefficient Variance over Frequency Indices",
