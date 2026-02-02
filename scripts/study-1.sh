@@ -3,7 +3,7 @@
 set -e
 
 # run experiments with all different circuits
-MAX_JOBS=5
+MAX_JOBS=20
 
 # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
 for circuit in Hardware_Efficient Circuit_15 Circuit_17 Circuit_19

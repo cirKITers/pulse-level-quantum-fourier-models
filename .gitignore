@@ -1,6 +1,7 @@
 # remove when in a stable phase
 results
 mlruns_bckp
+logs
 
 ##########################
 # KEDRO PROJECT
@@ -8,7 +9,6 @@ mlruns_bckp
 # ignore all local configuration
 conf/local/**
 !conf/local/.gitkeep
-.telemetry
 
 # ignore potentially sensitive credentials files
 conf/**/*credentials*
