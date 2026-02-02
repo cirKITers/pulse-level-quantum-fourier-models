@@ -12,12 +12,12 @@ cache = False
 scenarios = {
     "study-1": {
         "experiment_name": "study-1-1",
-        "max_distortion": 0.02,
+        "max_distortion": 0.01,
         "show_error": True,
     },
     "study-2": {
-        "experiment_name": "study-2-1",
-        "max_distortion": 0.02,
+        "experiment_name": "study-2-2",
+        "max_distortion": 0.01,
         "show_error": True,
     },
 }
