@@ -441,9 +441,9 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         )
 
     fig.update_layout(
-        title="Trace Distance over Pulse Parameter Variances",
+        title="Fidelity over Pulse Parameter Variances",
         xaxis_title="Pulse Parameter Variances",
-        yaxis_title="Trace Distance",
+        yaxis_title="Fidelity",
         template=design.template,
         font=dict(size=design.font_size),
     )
@@ -492,7 +492,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
         )
 
     fig.update_layout(
-        title="Fidelity over Pulse Parameter Variances",
+        title="Trace Distance over Pulse Parameter Variances",
         xaxis_title="Pulse Parameter Variances",
         yaxis_title="Trace Distance",
         template=design.template,
