@@ -15,3 +15,5 @@ For convenience, there are scripts for running experiments located in `./scripts
 In `slurm-job.sh` you can specify the required resources and which study to run.
 The other `study-x.sh` files then specify *what* is done in a single job.
 To submit a job, you can use `sbatch`, e.g. `sbatch ./scripts/slurm-job.sh`
+
+You can view all existing experiments using `uv run mlflow experiments search`.
