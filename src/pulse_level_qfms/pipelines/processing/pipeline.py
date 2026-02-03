@@ -18,6 +18,8 @@ def create_fcc_pipeline(**kwargs) -> Pipeline:
                     "model",
                     "params:fcc.seed",
                     "params:fcc.n_samples",
+                    "params:fcc.scale",
+                    "params:fcc.weighting",
                     "params:fcc.sample_axis",
                     "params:fcc.pulse_params_variance",
                 ],

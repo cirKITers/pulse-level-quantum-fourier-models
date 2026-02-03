@@ -32,3 +32,5 @@ fcc:
   n_samples: 500
   sample_axis: ["unitary", "pulse"]
   pulse_params_variance: 0.001
+  weighting: True
+  scale: True
