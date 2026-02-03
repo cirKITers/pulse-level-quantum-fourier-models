@@ -3,7 +3,7 @@
 set -e
 
 # run experiments with all different circuits
-MAX_JOBS=25
+MAX_JOBS=20
 
 # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
 for circuit in Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
@@ -16,13 +16,13 @@ do
         do
             # Wait if we already have MAX_JOBS running
             while [ $(jobs -r | wc -l) -ge $MAX_JOBS ]; do
-                sleep 5
+                sleep 10
             done
 
             echo "--- $circuit Ansatz, Variance $variance, Seed $seed ---"
             uv run kedro run --pipeline "fcc" --params="fcc.seed=$seed,fcc.pulse_params_variance=$variance,model.circuit_type=$circuit" &
 
-            sleep 60
+            sleep 30
         done
     done
 done
