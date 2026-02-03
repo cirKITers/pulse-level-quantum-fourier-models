@@ -276,14 +276,26 @@ def evaluate_fidelity(
     log.info(f"Seed for fidelity check: {seed}")
     log.info(f"Using {n_samples} samples for fidelity check")
 
-    model.initialize_params(rng=np.random.default_rng(seed), repeat=n_samples)
+    rng = np.random.default_rng(seed)
+
+    model.initialize_params(rng=rng, repeat=n_samples)
 
     # calculate density matrices for unitary and pulse circuits
     unitary_states = model(execution_type="density")
-    pulse_states = model(
-        pulse_params=np.random.normal(
-            loc=1.0, scale=pulse_params_variance, size=model.pulse_params.shape
+
+    scaler = rng.normal(
+        loc=1.0,
+        scale=pulse_params_variance,
+        size=(
+            *model.pulse_params.shape[:-1],
+            n_samples,
         ),
+    )
+    # disable repeat for pulse parameters
+    model.repeat_batch_axis = [True, True, False]
+
+    pulse_states = model(
+        pulse_params=scaler,
         gate_mode="pulse",
         execution_type="density",
     )
