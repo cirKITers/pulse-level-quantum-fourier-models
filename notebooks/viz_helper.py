@@ -3,10 +3,7 @@ import plotly
 import plotly.graph_objects as go
 from typing import List
 import pandas as pd
-from copy import deepcopy
 import string
-
-from data_helper import generate_hash
 
 
 class design:
