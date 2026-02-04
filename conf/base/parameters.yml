@@ -33,5 +33,5 @@ fcc:
   sample_axis: ["unitary", "pulse"]
   pulse_params_variance: 0.001
   method: "pearson"
-  weighting: True
+  weighting: False
   scale: True
