@@ -34,8 +34,8 @@ def register_pipelines() -> dict[str, Pipeline]:
     pipelines = find_pipelines()
     pipelines["__default__"] = sum(pipelines.values())
 
-    pipelines["fcc"] = generation_model_pipeline() + processing_fcc_pipeline()
-    pipelines["fidelity"] = generation_model_pipeline() + processing_fidelity_pipeline()
+    pipelines["study-1"] = generation_model_pipeline() + processing_fcc_pipeline()
+    pipelines["study-2"] = generation_model_pipeline() + processing_fidelity_pipeline()
     pipelines["training"] = (
         generation_data_pipeline()
         + generation_model_pipeline()
