@@ -185,6 +185,10 @@ def generate_df(run_ids: List[str]):
                 df.loc[it, f"coeff.var.f{f}"] = float(
                     run.data.metrics[f"coeff.var.f{f}"]
                 )
+                df.loc[it, f"coeff.mean.f{f}"] = float(
+                    run.data.metrics[f"coeff.mean.f{f}"]
+                )
+
         # get metrics
         if "fcc" in run.data.metrics:
             df.loc[it, "fcc"] = float(run.data.metrics["fcc"])
