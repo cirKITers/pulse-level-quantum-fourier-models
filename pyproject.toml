@@ -15,7 +15,6 @@ dependencies = [
     "mlflow (>=3.6.0,<4.0.0)",
     "torch>=2.9.1",
     "rich>=14.2.0",
-    "qml-essentials",
     "autoray<0.7.3",
     "kedro-mlflow>=2.0.0",
     "kedro-datasets>=9.0.0",
@@ -26,6 +25,7 @@ dependencies = [
     "jaxlib==0.4.28",
     "optax==0.2.5",
     "marimo>=0.19.7",
+    "qml-essentials>=0.1.38",
 ]
 
 [[tool.uv.index]]
@@ -40,7 +40,6 @@ torch = [
 torchvision = [
     { index = "pytorch-cpu" },
 ]
-qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "aeda37b7e675711a2de315f34bb90860f38f3089" }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

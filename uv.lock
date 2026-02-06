@@ -2315,7 +2315,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.2,<8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=3,<7" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=1.7.1,<2.0" },
-    { name = "qml-essentials", git = "https://github.com/cirKITers/qml-essentials?rev=aeda37b7e675711a2de315f34bb90860f38f3089" },
+    { name = "qml-essentials", specifier = ">=0.1.38" },
     { name = "rich", specifier = ">=14.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.0,<0.13.0" },
     { name = "torch", specifier = ">=2.9.1", index = "https://download.pytorch.org/whl/cpu" },
@@ -2723,14 +2723,18 @@ wheels = [
 
 [[package]]
 name = "qml-essentials"
-version = "0.1.37"
-source = { git = "https://github.com/cirKITers/qml-essentials?rev=aeda37b7e675711a2de315f34bb90860f38f3089#aeda37b7e675711a2de315f34bb90860f38f3089" }
+version = "0.1.38"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dill" },
     { name = "jax" },
     { name = "jaxlib" },
     { name = "optax" },
     { name = "pennylane" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b5/db/bfadd6e722ef197e0695d502f852b0536beae625abaf5bd39201c4316122/qml_essentials-0.1.38.tar.gz", hash = "sha256:3f08bfff54d4674cf4003d7d365e8183bcd7883461d220eed77f369dd70e443b", size = 3412661, upload-time = "2026-02-06T08:26:58.91Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/42/ffb7ab1f0e8d3432c73c416dbf54770239956c44d068f5ffa679951cd360/qml_essentials-0.1.38-py3-none-any.whl", hash = "sha256:442c4678a4c64a86b907fd4bd462e502b029f3da35f8a9433a389ca90c23b645", size = 84772, upload-time = "2026-02-06T08:26:57.626Z" },
 ]
 
 [[package]]
