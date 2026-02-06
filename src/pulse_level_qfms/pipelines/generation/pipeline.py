@@ -23,7 +23,7 @@ def create_model_pipeline(**kwargs) -> Pipeline:
                     "params:model.initialization",
                     "params:model.initialization_domain",
                     "params:model.output_qubit",
-                    "params:model.mp_threshold",
+                    "params:model.use_multithreading",
                     "params:model.seed",
                 ],
                 outputs={

@@ -1,6 +1,6 @@
 from typing import List, Dict, Tuple, Optional
 from rich.progress import track
-import io
+import jax
 
 import mlflow
 from torch.utils.data import DataLoader
@@ -126,15 +126,16 @@ class PulseFCC(FCC):
             else:
                 total_samples = n_samples
 
-            rng = np.random.default_rng(seed)
-
+            random_key = jax.random.PRNGKey(seed)
             # initialize model with new parameters and use batching if
             # "unitary" is specified in sampling axis
             if "unitary" in sample_axis:
-                model.initialize_params(rng=rng, repeat=total_samples)
+                random_key, _ = model.initialize_params(
+                    random_key=random_key, repeat=total_samples
+                )
                 log.info(f"Sampling unitary parameters")
             else:
-                model.initialize_params(rng=rng)
+                random_key, _ = model.initialize_params(random_key=random_key)
                 log.info(f"Re-initializing unitary parameters")
 
             scaler = None
@@ -147,30 +148,30 @@ class PulseFCC(FCC):
                         log.info(f"Using default pulse parameters")
                     else:
                         # sample differently for params
-                        scaler = rng.normal(
-                            loc=1.0,
-                            scale=pulse_params_variance,
-                            size=(
-                                *model.pulse_params.shape[:-1],
+                        scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                            random_key,
+                            shape=(
+                                *model.pulse_params.shape,
                                 total_samples,
                             ),
                         )
                         # but repeat over the input dimension
-                        # [..., 1, B_R]
-                        scaler = scaler[..., None, :]
-                        # [..., B_I, B_R]
+                        # Note, that the following steps are identical to what happens in
+                        # _assimilate_batch
+                        # [..., 1, B_P] -> [..., B_I, B_R]
                         scaler = scaler.repeat(np.prod(model.degree), axis=-2)
                         # [..., B]
-                        scaler = scaler.reshape(*model.pulse_params.shape[:-1], -1)
-                        # disable repeat for pulse parameters
+                        scaler = scaler.reshape(
+                            *model.pulse_params.shape[:-1],
+                            np.prod(model.degree) * total_samples,
+                        )
+                        # disable repeat for pulse parameters (to not further extend batch axis)
                         model.repeat_batch_axis = [True, True, False]
                         log.info(f"Sampling (pulse+std) parameters")
                 # or actually samples them if we didn't do that before
                 else:
-                    scaler = rng.normal(
-                        loc=1.0,
-                        scale=pulse_params_variance,
-                        size=(
+                    scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                        shape=(
                             *model.pulse_params.shape[:-1],
                             total_samples,
                         ),
@@ -339,17 +340,15 @@ def evaluate_fidelity(
     log.info(f"Seed for fidelity check: {seed}")
     log.info(f"Using {n_samples} samples for fidelity check")
 
-    rng = np.random.default_rng(seed)
-
-    model.initialize_params(rng=rng, repeat=n_samples)
+    random_key = jax.random.PRNGKey(seed)
+    random_key, _ = model.initialize_params(random_key=random_key, repeat=n_samples)
 
     # calculate density matrices for unitary and pulse circuits
     unitary_states = model(execution_type="density")
 
-    scaler = rng.normal(
-        loc=1.0,
-        scale=pulse_params_variance,
-        size=(
+    scaler = 1.0 + pulse_params_variance * jax.random.normal(
+        random_key,
+        shape=(
             *model.pulse_params.shape[:-1],
             n_samples,
         ),
