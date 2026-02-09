@@ -11,15 +11,15 @@ cache = False
 # scenarios for plotting
 scenarios = {
     "study-1": {
-        "experiment_name": "study-1-1",
-        "max_distortion": 0.01,
+        "experiment_name": "study-1-2",
+        "max_distortion": 0.012,
         "show_error": True,
     },
-    "study-2": {
-        "experiment_name": "study-2-2",
-        "max_distortion": 0.01,
-        "show_error": True,
-    },
+    # "study-2": {
+    #     "experiment_name": "study-2-3",
+    #     "max_distortion": 0.01,
+    #     "show_error": True,
+    # },
 }
 
 for scenario, setting in scenarios.items():
