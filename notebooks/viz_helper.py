@@ -339,7 +339,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             x=mean_fcc.index,
             y=mean_fcc.values,
             error_y=dict(type="data", array=std_fcc.values, visible=show_error),
-            mode="lines+markers",
+            mode="lines",
             name=f"{circuit_name_to_str(ansatz)}",
             marker=dict(
                 size=design.marker_size,
