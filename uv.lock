@@ -2315,7 +2315,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.2,<8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=3,<7" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=1.7.1,<2.0" },
-    { name = "qml-essentials", specifier = ">=0.1.38" },
+    { name = "qml-essentials", git = "https://github.com/cirKITers/qml-essentials?rev=0f0bbeae22768e4f82cd484708864e109c03a67c" },
     { name = "rich", specifier = ">=14.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.0,<0.13.0" },
     { name = "torch", specifier = ">=2.9.1", index = "https://download.pytorch.org/whl/cpu" },
@@ -2724,17 +2724,13 @@ wheels = [
 [[package]]
 name = "qml-essentials"
 version = "0.1.38"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/cirKITers/qml-essentials?rev=0f0bbeae22768e4f82cd484708864e109c03a67c#0f0bbeae22768e4f82cd484708864e109c03a67c" }
 dependencies = [
     { name = "dill" },
     { name = "jax" },
     { name = "jaxlib" },
     { name = "optax" },
     { name = "pennylane" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/db/bfadd6e722ef197e0695d502f852b0536beae625abaf5bd39201c4316122/qml_essentials-0.1.38.tar.gz", hash = "sha256:3f08bfff54d4674cf4003d7d365e8183bcd7883461d220eed77f369dd70e443b", size = 3412661, upload-time = "2026-02-06T08:26:58.91Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/42/ffb7ab1f0e8d3432c73c416dbf54770239956c44d068f5ffa679951cd360/qml_essentials-0.1.38-py3-none-any.whl", hash = "sha256:442c4678a4c64a86b907fd4bd462e502b029f3da35f8a9433a389ca90c23b645", size = 84772, upload-time = "2026-02-06T08:26:57.626Z" },
 ]
 
 [[package]]
@@ -3246,6 +3242,9 @@ dependencies = [
     { name = "typing-extensions", marker = "sys_platform == 'darwin'" },
 ]
 wheels = [
+    { url = "https://download.pytorch.org/whl/cpu/torch-2.10.0-1-cp310-none-macosx_11_0_arm64.whl", hash = "sha256:4db72a4d257c45c3502f11764ee41460a87312fdc3dff47a8957812efe961725" },
+    { url = "https://download.pytorch.org/whl/cpu/torch-2.10.0-1-cp311-none-macosx_11_0_arm64.whl", hash = "sha256:0826ac8e409551e12b2360ac18b4161a838cbd111933e694752f351191331d09" },
+    { url = "https://download.pytorch.org/whl/cpu/torch-2.10.0-1-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:7fbbf409143a4fe0812a40c0b46a436030a7e1d14fe8c5234dfbe44df47f617e" },
     { url = "https://download.pytorch.org/whl/cpu/torch-2.10.0-cp310-none-macosx_11_0_arm64.whl", hash = "sha256:2d16abfce6c92584ceeb00c3b2665d5798424dd9ed235ea69b72e045cd53ae97" },
     { url = "https://download.pytorch.org/whl/cpu/torch-2.10.0-cp311-none-macosx_11_0_arm64.whl", hash = "sha256:4584ab167995c0479f6821e3dceaf199c8166c811d3adbba5d8eedbbfa6764fd" },
     { url = "https://download.pytorch.org/whl/cpu/torch-2.10.0-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:45a1c5057629444aeb1c452c18298fa7f30f2f7aeadd4dc41f9d340980294407" },

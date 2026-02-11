@@ -25,7 +25,7 @@ dependencies = [
     "jaxlib==0.4.28",
     "optax==0.2.5",
     "marimo>=0.19.7",
-    "qml-essentials>=0.1.38",
+    "qml-essentials",
 ]
 
 [[tool.uv.index]]
@@ -40,6 +40,7 @@ torch = [
 torchvision = [
     { index = "pytorch-cpu" },
 ]
+qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "0f0bbeae22768e4f82cd484708864e109c03a67c" }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
