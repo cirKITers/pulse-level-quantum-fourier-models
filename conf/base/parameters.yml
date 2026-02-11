@@ -45,6 +45,6 @@ fidelity:
 expressibility:
   seed: 1000
   n_samples: 500
-  n_bins: 10
+  n_bins: 50
   pulse_params_variance: 0.001
   scale: True
