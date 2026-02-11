@@ -130,12 +130,12 @@ class PulseFCC(FCC):
             # initialize model with new parameters and use batching if
             # "unitary" is specified in sampling axis
             if "unitary" in sample_axis:
-                random_key, _ = model.initialize_params(
+                random_key = model.initialize_params(
                     random_key=random_key, repeat=total_samples
                 )
                 log.info(f"Sampling unitary parameters")
             else:
-                random_key, _ = model.initialize_params(random_key=random_key)
+                random_key = model.initialize_params(random_key=random_key)
                 log.info(f"Re-initializing unitary parameters")
 
             scaler = None
@@ -171,6 +171,7 @@ class PulseFCC(FCC):
                 # or actually samples them if we didn't do that before
                 else:
                     scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                        random_key,
                         shape=(
                             *model.pulse_params.shape[:-1],
                             total_samples,
@@ -181,9 +182,8 @@ class PulseFCC(FCC):
                 if pulse_params_variance == 0.0:
                     log.info(f"Using default pulse parameters")
                 else:
-                    scaler = rng.normal(
-                        loc=1.0,
-                        scale=pulse_params_variance,
+                    scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                        random_key,
                         size=model.pulse_params.shape,
                     )
                     log.info(f"Distorting pulse parameters")
@@ -341,7 +341,7 @@ def evaluate_fidelity(
     log.info(f"Using {n_samples} samples for fidelity check")
 
     random_key = jax.random.PRNGKey(seed)
-    random_key, _ = model.initialize_params(random_key=random_key, repeat=n_samples)
+    random_key = model.initialize_params(random_key=random_key, repeat=n_samples)
 
     # calculate density matrices for unitary and pulse circuits
     unitary_states = model(execution_type="density")
