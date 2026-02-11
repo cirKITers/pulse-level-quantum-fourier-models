@@ -10,11 +10,10 @@ import pennylane.numpy as np
 
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients, FCC
-from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.expressibility import Expressibility
 
 from pulse_level_qfms.utils import (
     Losses,
-    create_time_domain_viz,
 )
 
 
@@ -335,13 +334,20 @@ def evaluate_fidelity(
     model: Model,
     seed: int,
     n_samples: int,
+    scale: bool,
     pulse_params_variance: float,
 ):
     log.info(f"Seed for fidelity check: {seed}")
-    log.info(f"Using {n_samples} samples for fidelity check")
+
+    if scale:
+        total_samples = int(np.power(2, model.n_qubits) * n_samples)
+    else:
+        total_samples = n_samples
+
+    log.info(f"Using {total_samples} samples for fidelity check")
 
     random_key = jax.random.PRNGKey(seed)
-    random_key = model.initialize_params(random_key=random_key, repeat=n_samples)
+    random_key = model.initialize_params(random_key=random_key, repeat=total_samples)
 
     # calculate density matrices for unitary and pulse circuits
     unitary_states = model(execution_type="density")
@@ -350,7 +356,7 @@ def evaluate_fidelity(
         random_key,
         shape=(
             *model.pulse_params.shape[:-1],
-            n_samples,
+            total_samples,
         ),
     )
     # disable repeat for pulse parameters
@@ -372,4 +378,59 @@ def evaluate_fidelity(
 
     return {
         "fidelity": fidelity,
+    }
+
+
+def evaluate_expressibility(
+    model: Model,
+    seed: int,
+    n_samples: int,
+    n_bins: int,
+    scale: bool,
+    pulse_params_variance: float,
+):
+    log.info(f"Seed for expressibility: {seed}")
+
+    if scale:
+        total_samples = int(np.power(2, model.n_qubits) * n_samples)
+    else:
+        total_samples = n_samples
+
+    log.info(f"Using {total_samples} samples for expressibility")
+
+    random_key = jax.random.PRNGKey(seed)
+
+    scaler = 1.0 + pulse_params_variance * jax.random.normal(
+        random_key,
+        shape=(
+            *model.pulse_params.shape[:-1],
+            total_samples,
+        ),
+    )
+    model.repeat_batch_axis = [True, True, False]
+
+    input_domain, bins, dist_circuit = Expressibility.state_fidelities(
+        seed=seed,
+        n_samples=total_samples,
+        n_bins=n_bins,
+        scale=False,
+        model=model,
+        pulse_params=scaler,
+        gate_mode="pulse",
+    )
+
+    input_domain, dist_haar = Expressibility.haar_integral(
+        n_qubits=model.n_qubits,
+        n_bins=n_bins,
+        cache=True,
+    )
+
+    kl_dist = Expressibility.kullback_leibler_divergence(dist_circuit, dist_haar)
+    expressibility = np.mean(kl_dist)
+
+    # average over all samples
+    mlflow.log_metric("expressibility", expressibility)
+
+    return {
+        "expressibility": expressibility,
     }

@@ -35,3 +35,16 @@ fcc:
   method: "pearson"
   weighting: False
   scale: True
+
+fidelity:
+  seed: 1000
+  n_samples: 500
+  pulse_params_variance: 0.001
+  scale: True
+
+expressibility:
+  seed: 1000
+  n_samples: 500
+  n_bins: 10
+  pulse_params_variance: 0.001
+  scale: True

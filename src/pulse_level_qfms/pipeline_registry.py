@@ -18,6 +18,9 @@ from .pipelines.processing.pipeline import (
     create_fidelity_pipeline as processing_fidelity_pipeline,
 )
 from .pipelines.processing.pipeline import (
+    create_expressibility_pipeline as processing_expressibility_pipeline,
+)
+from .pipelines.processing.pipeline import (
     create_training_pipeline as processing_training_pipeline,
 )
 from .pipelines.visualization.pipeline import (
@@ -36,6 +39,9 @@ def register_pipelines() -> dict[str, Pipeline]:
 
     pipelines["study-1"] = generation_model_pipeline() + processing_fcc_pipeline()
     pipelines["study-2"] = generation_model_pipeline() + processing_fidelity_pipeline()
+    pipelines["study-3"] = (
+        generation_model_pipeline() + processing_expressibility_pipeline()
+    )
     pipelines["training"] = (
         generation_data_pipeline()
         + generation_model_pipeline()

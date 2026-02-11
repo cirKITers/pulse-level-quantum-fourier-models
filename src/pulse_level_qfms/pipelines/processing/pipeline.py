@@ -4,6 +4,7 @@ from pulse_level_qfms.pipelines.processing.nodes import (
     calculate_fcc,
     train_model,
     evaluate_fidelity,
+    evaluate_expressibility,
 )
 
 
@@ -41,9 +42,33 @@ def create_fidelity_pipeline(**kwargs) -> Pipeline:
                 tags=["processing"],
                 inputs=[
                     "model",
-                    "params:fcc.seed",
-                    "params:fcc.n_samples",
-                    "params:fcc.pulse_params_variance",
+                    "params:fidelity.seed",
+                    "params:fidelity.n_samples",
+                    "params:fidelity.scale",
+                    "params:fidelity.pulse_params_variance",
+                ],
+                outputs={
+                    "fidelity": "fidelity",
+                },
+            ),
+        ]
+    )
+
+
+def create_expressibility_pipeline(**kwargs) -> Pipeline:
+    return Pipeline(
+        [
+            Node(
+                evaluate_expressibility,
+                name="evaluate_expressibility",
+                tags=["processing"],
+                inputs=[
+                    "model",
+                    "params:expressibility.seed",
+                    "params:expressibility.n_samples",
+                    "params:expressibility.n_bins",
+                    "params:expressibility.scale",
+                    "params:expressibility.pulse_params_variance",
                 ],
                 outputs={
                     "fidelity": "fidelity",
