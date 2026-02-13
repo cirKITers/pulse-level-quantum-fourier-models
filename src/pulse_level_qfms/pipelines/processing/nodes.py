@@ -183,7 +183,7 @@ class PulseFCC(FCC):
                 else:
                     scaler = 1.0 + pulse_params_variance * jax.random.normal(
                         random_key,
-                        size=model.pulse_params.shape,
+                        shape=model.pulse_params.shape,
                     )
                     log.info(f"Distorting pulse parameters")
 
@@ -198,7 +198,7 @@ class PulseFCC(FCC):
             shift=True,
             trim=True,
             gate_mode="pulse" if "pulse" in sample_axis else "unitary",
-            pulse_params=scaler,
+            pulse_params=scaler if "pulse" in sample_axis else None,
             **kwargs,
         )
 
