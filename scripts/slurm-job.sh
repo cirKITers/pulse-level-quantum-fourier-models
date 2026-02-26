@@ -17,7 +17,7 @@
 #SBATCH --partition cpu
 # 
 # expected memory requirements
-#SBATCH --mem=20000MB
+#SBATCH --mem=20GB
 #
 # infos
 #
@@ -25,7 +25,7 @@
 #SBATCH --output="logs/slurm/slurm-%j-%x.out"
 
 module load compiler/llvm
-module load devel/python/3.11.7
+module load devel/python/3.12.3
 
 cd ~/pulse-level-quantum-fourier-models
 source ./scripts/study-1.sh

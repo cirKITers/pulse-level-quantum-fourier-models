@@ -6,7 +6,7 @@ authors = [
     {name = "Melvin Strobl",email = "lc3267@kit.edu"}
 ]
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.11,<3.13"
 dynamic = [
     "version",
 ]
@@ -21,11 +21,8 @@ dependencies = [
     "plotly>=6.5.0",
     "kaleido>=1.2.0",
     "ipykernel>=7.1.0",
-    "jax==0.4.28",
-    "jaxlib==0.4.28",
-    "optax==0.2.5",
     "marimo>=0.19.7",
-    "qml-essentials>=0.1.38",
+    "qml-essentials",
 ]
 
 [[tool.uv.index]]
@@ -40,6 +37,7 @@ torch = [
 torchvision = [
     { index = "pytorch-cpu" },
 ]
+qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "43aa8fa33ff1e50b7655555353cf4046eb48889f" }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

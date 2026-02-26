@@ -150,7 +150,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             y=[None],
             mode="markers",
             name=f"{circuit_name_to_str(ansatz)}",
-            legendgroup=f"circuit_{ansatz}",
+            legendgroup=f"circuit",
             showlegend=True,
             marker=dict(
                 size=design.marker_size,
@@ -171,7 +171,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             y=[None],
             mode="markers",
             name=f"σ²={variance}",
-            legendgroup=f"variance_{variance}",
+            legendgroup=f"variance",
             showlegend=True,
             marker=dict(
                 size=design.marker_size,
@@ -183,10 +183,12 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     fig.update_layout(
         title="Coeff. Mean over Pulse Parameter Var.",
-        xaxis_title="Pulse Parameter Variances",
+        xaxis_title="Frequency",
         yaxis_title="Coefficient Mean",
         template=design.template,
         font=dict(size=design.font_size),
+        legend_indentation=-12,
+        legend_tracegroupgap=3,
     )
 
     fig.update_yaxes(type="log")
@@ -260,7 +262,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             y=[None],
             mode="markers",
             name=f"{circuit_name_to_str(ansatz)}",
-            legendgroup=f"circuit_{ansatz}",
+            legendgroup=f"circuit",
             showlegend=True,
             marker=dict(
                 size=design.marker_size,
@@ -281,7 +283,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             y=[None],
             mode="markers",
             name=f"σ²={variance}",
-            legendgroup=f"variance_{variance}",
+            legendgroup=f"variance",
             showlegend=True,
             marker=dict(
                 size=design.marker_size,
@@ -293,10 +295,12 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     fig.update_layout(
         title="Coeff. Var. over Pulse Parameter Var.",
-        xaxis_title="Pulse Parameter Variances",
+        xaxis_title="Frequency",
         yaxis_title="Coefficient Variance",
         template=design.template,
         font=dict(size=design.font_size),
+        legend_indentation=-12,
+        legend_tracegroupgap=3,
     )
 
     fig.update_yaxes(type="log")

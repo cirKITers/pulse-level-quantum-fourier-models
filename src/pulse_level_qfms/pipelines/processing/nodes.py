@@ -1,22 +1,23 @@
 from typing import List, Dict, Tuple, Optional
 from rich.progress import track
 import jax
+import optax
 
 import mlflow
 from torch.utils.data import DataLoader
 
-import pennylane as qml
-import pennylane.numpy as np
+import numpy as np
 
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients, FCC
-from qml_essentials.ansaetze import PulseInformation as pinfo
+from qml_essentials.expressibility import Expressibility
+from qml_essentials.math import fidelity, trace_distance, phase_difference
 
 from pulse_level_qfms.utils import (
     Losses,
-    create_time_domain_viz,
 )
 
+jax.config.update("jax_enable_x64", True)
 
 import logging
 
@@ -130,12 +131,12 @@ class PulseFCC(FCC):
             # initialize model with new parameters and use batching if
             # "unitary" is specified in sampling axis
             if "unitary" in sample_axis:
-                random_key, _ = model.initialize_params(
+                random_key = model.initialize_params(
                     random_key=random_key, repeat=total_samples
                 )
                 log.info(f"Sampling unitary parameters")
             else:
-                random_key, _ = model.initialize_params(random_key=random_key)
+                random_key = model.initialize_params(random_key=random_key)
                 log.info(f"Re-initializing unitary parameters")
 
             scaler = None
@@ -171,6 +172,7 @@ class PulseFCC(FCC):
                 # or actually samples them if we didn't do that before
                 else:
                     scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                        random_key,
                         shape=(
                             *model.pulse_params.shape[:-1],
                             total_samples,
@@ -181,10 +183,9 @@ class PulseFCC(FCC):
                 if pulse_params_variance == 0.0:
                     log.info(f"Using default pulse parameters")
                 else:
-                    scaler = rng.normal(
-                        loc=1.0,
-                        scale=pulse_params_variance,
-                        size=model.pulse_params.shape,
+                    scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                        random_key,
+                        shape=model.pulse_params.shape,
                     )
                     log.info(f"Distorting pulse parameters")
 
@@ -199,7 +200,7 @@ class PulseFCC(FCC):
             shift=True,
             trim=True,
             gate_mode="pulse" if "pulse" in sample_axis else "unitary",
-            pulse_params=scaler,
+            pulse_params=scaler if "pulse" in sample_axis else None,
             **kwargs,
         )
 
@@ -226,6 +227,10 @@ def calculate_fcc(
     pulse_params_variance: float,
 ):
     log.info(f"Seed for FCC: {seed}")
+
+    # log before we do any batching
+    mlflow.log_metric("n_pulse_params", model.pulse_params.size)
+    mlflow.log_metric("n_gate_params", model.params.size)
 
     # call our modified class to calculate the fourier fingerprint
     fourier_fingerprint, _ = PulseFCC.get_fourier_fingerprint(
@@ -260,7 +265,7 @@ def train_model(
     steps: int,
     learning_rate: float,
 ) -> None:
-    opt = qml.AdamOptimizer(stepsize=learning_rate)
+    opt = optax.adam(learning_rate)
 
     try:
         loss_functions = [getattr(Losses, loss) for loss in loss_functions]
@@ -335,13 +340,20 @@ def evaluate_fidelity(
     model: Model,
     seed: int,
     n_samples: int,
+    scale: bool,
     pulse_params_variance: float,
 ):
     log.info(f"Seed for fidelity check: {seed}")
-    log.info(f"Using {n_samples} samples for fidelity check")
+
+    if scale:
+        total_samples = int(np.power(2, model.n_qubits) * n_samples)
+    else:
+        total_samples = n_samples
+
+    log.info(f"Using {total_samples} samples for fidelity check")
 
     random_key = jax.random.PRNGKey(seed)
-    random_key, _ = model.initialize_params(random_key=random_key, repeat=n_samples)
+    random_key = model.initialize_params(random_key=random_key, repeat=total_samples)
 
     # calculate density matrices for unitary and pulse circuits
     unitary_states = model(execution_type="density")
@@ -350,7 +362,7 @@ def evaluate_fidelity(
         random_key,
         shape=(
             *model.pulse_params.shape[:-1],
-            n_samples,
+            total_samples,
         ),
     )
     # disable repeat for pulse parameters
@@ -363,13 +375,70 @@ def evaluate_fidelity(
     )
 
     # calculate overlap
-    fidelity = qml.math.fidelity(unitary_states, pulse_states)
-    trace_distance = qml.math.trace_distance(unitary_states, pulse_states)
+    fidelity = fidelity(unitary_states, pulse_states)
+    phase = phase_difference(unitary_states, pulse_states)
+    trace_distance = trace_distance(unitary_states, pulse_states)
 
     # average over all samples
     mlflow.log_metric("fidelity", np.mean(fidelity))
+    mlflow.log_metric("phase", np.mean(phase))
     mlflow.log_metric("trace-distance", np.mean(trace_distance))
 
     return {
         "fidelity": fidelity,
+    }
+
+
+def evaluate_expressibility(
+    model: Model,
+    seed: int,
+    n_samples: int,
+    n_bins: int,
+    scale: bool,
+    pulse_params_variance: float,
+):
+    log.info(f"Seed for expressibility: {seed}")
+
+    if scale:
+        total_samples = int(np.power(2, model.n_qubits) * n_samples)
+    else:
+        total_samples = n_samples
+
+    log.info(f"Using {total_samples} samples for expressibility")
+
+    random_key = jax.random.PRNGKey(seed)
+
+    scaler = 1.0 + pulse_params_variance * jax.random.normal(
+        random_key,
+        shape=(
+            *model.pulse_params.shape[:-1],
+            total_samples,
+        ),
+    )
+    model.repeat_batch_axis = [True, True, False]
+
+    input_domain, bins, dist_circuit = Expressibility.state_fidelities(
+        seed=seed,
+        n_samples=total_samples,
+        n_bins=n_bins,
+        scale=False,
+        model=model,
+        pulse_params=scaler,
+        gate_mode="pulse",
+    )
+
+    input_domain, dist_haar = Expressibility.haar_integral(
+        n_qubits=model.n_qubits,
+        n_bins=n_bins,
+        cache=True,
+    )
+
+    kl_dist = Expressibility.kullback_leibler_divergence(dist_circuit, dist_haar)
+    expressibility = np.mean(kl_dist)
+
+    # average over all samples
+    mlflow.log_metric("expressibility", expressibility)
+
+    return {
+        "expressibility": expressibility,
     }

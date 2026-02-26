@@ -31,6 +31,19 @@
             "justMyCode": false
         },
         {
+            "name": "Study 3",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "kedro",
+            "args": [
+                "run",
+                "--pipeline",
+                "study-3"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "Training",
             "type": "debugpy",
             "request": "launch",
