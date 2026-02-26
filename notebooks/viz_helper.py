@@ -10,7 +10,7 @@ class design:
     template = "plotly_white"
     font_size = 22
     marker_size = 14
-    marker_line_width = 1
+    marker_line_width = 2
     marker_a_opacity = 1.0
     marker_b_opacity = 1.0
     marker_a_style = "x"
@@ -345,7 +345,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         )
 
     fig.update_layout(
-        title="FCC over Pulse Parameter Variances",
+        title="FCC over PP Variances",
         xaxis_title="Pulse Parameter Variances",
         yaxis_title="FCC",
         template=design.template,
@@ -388,15 +388,11 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             error_y=dict(type="data", array=std.values, visible=show_error),
             mode="lines",
             name=f"{circuit_name_to_str(ansatz)}",
-            marker=dict(
-                size=design.marker_size,
-                line=dict(width=design.marker_line_width),
-            ),
-            line=dict(color=next(color_it)),
+            line=dict(color=next(color_it), width=design.marker_line_width),
         )
 
     fig.update_layout(
-        title="Fidelity over Pulse Parameter Variances",
+        title="Fidelity over PP Variances",
         xaxis_title="Pulse Parameter Variances",
         yaxis_title="Fidelity",
         template=design.template,
@@ -439,11 +435,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
             error_y=dict(type="data", array=std.values, visible=show_error),
             mode="lines",
             name=f"{circuit_name_to_str(ansatz)}",
-            marker=dict(
-                size=design.marker_size,
-                line=dict(width=design.marker_line_width),
-            ),
-            line=dict(color=next(color_it)),
+            line=dict(color=next(color_it), width=design.marker_line_width),
         )
 
     fig.update_layout(
