@@ -1,5 +1,3 @@
-import pennylane as qml
-
 from qml_essentials.model import Model
 from qml_essentials.ansaetze import Gates
 from qml_essentials.coefficients import Datasets

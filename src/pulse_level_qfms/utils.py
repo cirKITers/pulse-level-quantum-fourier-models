@@ -1,6 +1,5 @@
-import pennylane as qml
-import pennylane.numpy as np
 import plotly.graph_objects as go
+import numpy as np
 
 import torch
 from scipy.stats import wasserstein_distance, anderson_ksamp, energy_distance

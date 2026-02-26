@@ -1,21 +1,23 @@
 from typing import List, Dict, Tuple, Optional
 from rich.progress import track
 import jax
+import optax
 
 import mlflow
 from torch.utils.data import DataLoader
 
-import pennylane as qml
-import pennylane.numpy as np
+import numpy as np
 
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients, FCC
 from qml_essentials.expressibility import Expressibility
+from qml_essentials.math import fidelity, trace_distance, phase_difference
 
 from pulse_level_qfms.utils import (
     Losses,
 )
 
+jax.config.update("jax_enable_x64", True)
 
 import logging
 
@@ -263,7 +265,7 @@ def train_model(
     steps: int,
     learning_rate: float,
 ) -> None:
-    opt = qml.AdamOptimizer(stepsize=learning_rate)
+    opt = optax.adam(learning_rate)
 
     try:
         loss_functions = [getattr(Losses, loss) for loss in loss_functions]
@@ -373,11 +375,13 @@ def evaluate_fidelity(
     )
 
     # calculate overlap
-    fidelity = qml.math.fidelity(unitary_states, pulse_states)
-    trace_distance = qml.math.trace_distance(unitary_states, pulse_states)
+    fidelity = fidelity(unitary_states, pulse_states)
+    phase = phase_difference(unitary_states, pulse_states)
+    trace_distance = trace_distance(unitary_states, pulse_states)
 
     # average over all samples
     mlflow.log_metric("fidelity", np.mean(fidelity))
+    mlflow.log_metric("phase", np.mean(phase))
     mlflow.log_metric("trace-distance", np.mean(trace_distance))
 
     return {
