@@ -17,7 +17,7 @@
 #SBATCH --partition cpu
 # 
 # expected memory requirements
-#SBATCH --mem=20GB
+#SBATCH --mem=28GB
 #
 # infos
 #
@@ -28,4 +28,4 @@ module load compiler/llvm
 module load devel/python/3.12.3
 
 cd ~/pulse-level-quantum-fourier-models
-source ./scripts/study-1.sh
+source ./scripts/study-2.sh
