@@ -167,10 +167,6 @@ def generate_df(run_ids: List[str]):
             df.loc[it, "data.seed"] = int(run.data.params["data.seed"])
 
         df.loc[it, "model.seed"] = int(run.data.params["model.seed"])
-        df.loc[it, "fcc.seed"] = int(run.data.params["fcc.seed"])
-        df.loc[it, "fcc.pulse_params_variance"] = float(
-            run.data.params["fcc.pulse_params_variance"]
-        )
 
         frequencies = sorted(
             [
@@ -192,12 +188,20 @@ def generate_df(run_ids: List[str]):
         # get metrics
         if "fcc" in run.data.metrics:
             df.loc[it, "fcc"] = float(run.data.metrics["fcc"])
+            df.loc[it, "fcc.seed"] = int(run.data.params["fcc.seed"])
+            df.loc[it, "pulse_params_variance"] = float(
+                run.data.params["fcc.pulse_params_variance"]
+            )
 
         if "train_mse" in run.data.metrics:
             df.loc[it, "train_mse"] = run.data.metrics["train_mse"]
 
         if "fidelity" in run.data.metrics:
             df.loc[it, "fidelity"] = float(run.data.metrics["fidelity"])
+            df.loc[it, "fidelity.seed"] = int(run.data.params["fidelity.seed"])
+            df.loc[it, "pulse_params_variance"] = float(
+                run.data.params["fidelity.pulse_params_variance"]
+            )
 
         if "trace-distance" in run.data.metrics:
             df.loc[it, "trace-distance"] = float(run.data.metrics["trace-distance"])

@@ -99,11 +99,11 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     freq_indices = sorted([float(col.split("coeff.var.f")[1]) for col in coeff_cols])
 
     # Filter rows where pulse_params_variance is less than max_distortion
-    filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion]
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
-    variances = sorted(filtered_df["fcc.pulse_params_variance"].unique())
+    variances = sorted(filtered_df["pulse_params_variance"].unique())
 
     symbol_it = iter(design.symbols_lst)
     # Create a trace for each circuit type
@@ -116,7 +116,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         for variance in variances:
             # Filter data for this circuit type
             circuit_distortion_df = filtered_df[filtered_df["ansatz"] == ansatz][
-                filtered_df["fcc.pulse_params_variance"] == variance
+                filtered_df["pulse_params_variance"] == variance
             ]
 
             means = (
@@ -211,11 +211,11 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     freq_indices = sorted([float(col.split("coeff.var.f")[1]) for col in coeff_cols])
 
     # Filter rows where pulse_params_variance is less than max_distortion
-    filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion]
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
-    variances = sorted(filtered_df["fcc.pulse_params_variance"].unique())
+    variances = sorted(filtered_df["pulse_params_variance"].unique())
 
     symbol_it = iter(design.symbols_lst)
     # Create a trace for each circuit type
@@ -228,7 +228,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         for variance in variances:
             # Filter data for this circuit type
             circuit_distortion_df = filtered_df[filtered_df["ansatz"] == ansatz][
-                filtered_df["fcc.pulse_params_variance"] == variance
+                filtered_df["pulse_params_variance"] == variance
             ]
 
             means = (
@@ -319,7 +319,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     fig = go.Figure()
 
     # Filter rows where pulse_params_variance is less than max_distortion
-    filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion]
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
@@ -331,7 +331,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
         # average the fcc over different seeds for a given distortion
-        grouped_df = circuit_df.groupby("fcc.pulse_params_variance").fcc
+        grouped_df = circuit_df.groupby("pulse_params_variance").fcc
         mean_fcc = grouped_df.mean()
         std_fcc = grouped_df.std()
 
@@ -370,7 +370,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     fig = go.Figure()
 
     # Filter rows where pulse_params_variance is less than max_distortion
-    filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion]
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
@@ -382,7 +382,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
         # average the fidelity over different seeds for a given distortion
-        grouped_df = circuit_df.groupby("fcc.pulse_params_variance")["fidelity"]
+        grouped_df = circuit_df.groupby("pulse_params_variance")["fidelity"]
         mean = grouped_df.mean()
         std = grouped_df.std()
 
@@ -417,7 +417,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
     fig = go.Figure()
 
     # Filter rows where pulse_params_variance is less than max_distortion
-    filtered_df = df[df["fcc.pulse_params_variance"] <= max_distortion]
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
@@ -429,7 +429,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
         # average the fidelity over different seeds for a given distortion
-        grouped_df = circuit_df.groupby("fcc.pulse_params_variance")["trace-distance"]
+        grouped_df = circuit_df.groupby("pulse_params_variance")["trace-distance"]
         mean = grouped_df.mean()
         std = grouped_df.std()
 
