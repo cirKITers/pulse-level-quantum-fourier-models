@@ -376,12 +376,12 @@ def evaluate_fidelity(
 
     # calculate overlap
     fi = fidelity(unitary_states, pulse_states)
-    ph = phase_difference(unitary_states, pulse_states)
+    # ph = phase_difference(unitary_states, pulse_states)
     td = trace_distance(unitary_states, pulse_states)
 
     # average over all samples
     mlflow.log_metric("fidelity", np.mean(fi))
-    mlflow.log_metric("phase", np.mean(ph))
+    # mlflow.log_metric("phase", np.mean(ph))
     mlflow.log_metric("trace-distance", np.mean(td))
 
     return {
