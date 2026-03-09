@@ -25,7 +25,6 @@ def generate_model(
     initialization: str,
     initialization_domain: List[float],
     output_qubit: int,
-    use_multithreading: bool,
     seed: int,
 ) -> Dict[str, Model]:
     log.info(
@@ -41,7 +40,6 @@ def generate_model(
         output_qubit=output_qubit,
         initialization=initialization,
         initialization_domain=initialization_domain,
-        use_multithreading=use_multithreading,
         random_seed=seed,
     )
 
