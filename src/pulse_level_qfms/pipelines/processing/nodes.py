@@ -153,18 +153,20 @@ class PulseFCC(FCC):
                             random_key,
                             shape=(
                                 total_samples,
-                                *model.pulse_params.shape,
+                                *model.pulse_params.shape[
+                                    1:
+                                ],  # starting from batch dimension
                             ),
                         )
                         # but repeat over the input dimension
                         # Note, that the following steps are identical to what happens in
                         # _assimilate_batch
-                        # [..., 1, B_P] -> [..., B_I, B_R]
+                        # [B_I, 1, B_R, ...]
                         scaler = scaler.repeat(np.prod(model.degree), axis=0)
                         # [..., B]
                         scaler = scaler.reshape(
                             np.prod(model.degree) * total_samples,
-                            *model.pulse_params.shape,
+                            *model.pulse_params.shape[1:],
                         )
                         # disable repeat for pulse parameters (to not further extend batch axis)
                         model.repeat_batch_axis = [True, True, False]
