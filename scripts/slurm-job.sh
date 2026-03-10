@@ -11,7 +11,7 @@
 #
 # expected duration of the job
 #              hh:mm:ss
-#SBATCH --time=10:00:00
+#SBATCH --time=16:00:00
 # 
 # partition the job will run on
 #SBATCH --partition cpu
@@ -28,4 +28,4 @@ module load compiler/llvm
 module load devel/python/3.12.3
 
 cd ~/pulse-level-quantum-fourier-models
-source ./scripts/study-2.sh
+source ./scripts/study-1.sh
