@@ -17,7 +17,7 @@
 #SBATCH --partition cpu
 # 
 # expected memory requirements
-#SBATCH --mem=28GB
+#SBATCH --mem=64GB
 #
 # infos
 #
