@@ -24,6 +24,7 @@ def create_fcc_pipeline(**kwargs) -> Pipeline:
                     "params:fcc.weighting",
                     "params:fcc.sample_axis",
                     "params:fcc.pulse_params_variance",
+                    "params:fcc.numerical_cap"
                 ],
                 outputs={
                     "fcc": "fcc",

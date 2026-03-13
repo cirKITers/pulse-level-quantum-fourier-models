@@ -225,6 +225,7 @@ def calculate_fcc(
     weighting: bool,
     sample_axis: str,
     pulse_params_variance: float,
+    numerical_cap:float
 ):
     log.info(f"Seed for FCC: {seed}")
 
@@ -243,6 +244,7 @@ def calculate_fcc(
         trim_redundant=True,
         sample_axis=sample_axis,
         pulse_params_variance=pulse_params_variance,
+        numerical_cap=numerical_cap,
     )
 
     # and finally the fcc
