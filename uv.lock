@@ -1929,7 +1929,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.2,<8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=3,<7" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=1.7.1,<2.0" },
-    { name = "qml-essentials", git = "https://github.com/cirKITers/qml-essentials?rev=68b474630efca8f2f9f47f00b62c127564749acc" },
+    { name = "qml-essentials", git = "https://github.com/cirKITers/qml-essentials?rev=a8976f8632f088ca43443274d2fd58a8686476f0" },
     { name = "rich", specifier = ">=14.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.0,<0.13.0" },
     { name = "torch", specifier = ">=2.9.1", index = "https://download.pytorch.org/whl/cpu" },
@@ -2281,7 +2281,7 @@ wheels = [
 [[package]]
 name = "qml-essentials"
 version = "0.1.38"
-source = { git = "https://github.com/cirKITers/qml-essentials?rev=68b474630efca8f2f9f47f00b62c127564749acc#68b474630efca8f2f9f47f00b62c127564749acc" }
+source = { git = "https://github.com/cirKITers/qml-essentials?rev=a8976f8632f088ca43443274d2fd58a8686476f0#a8976f8632f088ca43443274d2fd58a8686476f0" }
 dependencies = [
     { name = "diffrax" },
     { name = "jax" },
