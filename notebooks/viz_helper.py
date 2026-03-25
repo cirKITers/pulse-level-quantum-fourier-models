@@ -28,6 +28,11 @@ class design:
         "triangle-up",
         "hexagon",
         "star",
+        "star-square",
+        "y-up",
+        "bowtie",
+        "hourglass",
+        "cross-thin",
     ]
     prim_colors_lst = plotly.colors.qualitative.Dark2
     sec_colors_lst = plotly.colors.qualitative.Pastel2
