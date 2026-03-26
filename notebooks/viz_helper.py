@@ -2,6 +2,7 @@ import os
 import plotly
 import plotly.graph_objects as go
 from typing import List
+import numpy as np
 import pandas as pd
 import string
 
@@ -28,9 +29,14 @@ class design:
         "triangle-up",
         "hexagon",
         "star",
+        "star-square",
+        "y-up",
+        "bowtie",
+        "hourglass",
+        "cross-thin",
     ]
-    prim_colors_lst = plotly.colors.qualitative.Dark2
-    sec_colors_lst = plotly.colors.qualitative.Pastel2
+    prim_colors_lst = plotly.colors.qualitative.T10
+    sec_colors_lst = plotly.colors.qualitative.Safe
     seq_colors = plotly.colors.sequential.dense_r
 
 
@@ -71,6 +77,7 @@ def viz_study_1(df, max_distortion, show_error):
     figures.append(fcc_over_distortion(df, max_distortion, show_error))
     figures.append(coeff_mean_over_distortion(df, max_distortion, show_error))
     figures.append(coeff_var_over_distortion(df, max_distortion, show_error))
+    figures.append(coeff_var_delta_over_distortion(df, max_distortion, show_error))
 
     return figures
 
@@ -216,6 +223,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     # Get unique circuit types
     ansatzes = sorted(filtered_df["ansatz"].unique())
     variances = sorted(filtered_df["pulse_params_variance"].unique())
+    COEFF_VAR_CUTOFF = 5e-9
 
     symbol_it = iter(design.symbols_lst)
     # Create a trace for each circuit type
@@ -231,6 +239,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
                 filtered_df["pulse_params_variance"] == variance
             ]
 
+
             means = (
                 circuit_distortion_df[[f"coeff.var.f{idx}" for idx in freq_indices]]
                 .mean()
@@ -242,9 +251,12 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
                 .values
             )
 
+            # Clamp coefficient variance values below the cutoff
+            means_clamped = np.clip(means, a_min=COEFF_VAR_CUTOFF, a_max=None)
+
             fig.add_scatter(
                 x=freq_indices,
-                y=means,
+                y=means_clamped,
                 mode="lines+markers",
                 showlegend=False,
                 marker=dict(
@@ -254,6 +266,18 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
                 ),
                 line=dict(color=next(color_it)),
             )
+
+    # Add a horizontal dashed line at the cutoff as a visual indicator
+    fig.add_hline(
+        y=COEFF_VAR_CUTOFF,
+        line_dash="dash",
+        line_color="gray",
+        line_width=1.5,
+        annotation_text=f"cutoff = {COEFF_VAR_CUTOFF:.0e}",
+        annotation_position="bottom right",
+        annotation_font_size=design.font_size - 4,
+        annotation_font_color="gray",
+    )
 
     symbol_it = iter(design.symbols_lst)
     for ansatz in ansatzes:
@@ -307,6 +331,96 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     return fig
 
+def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error):
+    """
+    Plot the difference in coefficient variance between zero distortion
+    (pulse_params_variance == 0) and maximal distortion per ansatz over
+    the frequency index.
+
+    Args:
+        df (pd.DataFrame): DataFrame with coeff.var.f* columns.
+        max_distortion: Upper bound used to determine the maximal distortion level.
+        show_error: Whether to display error bars.
+    """
+    fig = go.Figure()
+
+    # Extract frequency indices from column names
+    coeff_cols = [col for col in df.columns if col.startswith("coeff.var.f")]
+    freq_indices = sorted([float(col.split("coeff.var.f")[1]) for col in coeff_cols])
+    var_cols = [f"coeff.var.f{idx}" for idx in freq_indices]
+
+    # Filter rows where pulse_params_variance is at most max_distortion
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
+
+    # Get unique circuit types and determine the maximal variance present
+    ansatzes = sorted(filtered_df["ansatz"].unique())
+    variances = sorted(filtered_df["pulse_params_variance"].unique())
+    max_var = max(variances)
+
+    color_it = iter(design.prim_colors_lst)
+
+    for ansatz in ansatzes:
+        ansatz_df = filtered_df[filtered_df["ansatz"] == ansatz]
+
+        # Baseline: zero distortion (variance == 0)
+        baseline_df = ansatz_df[ansatz_df["pulse_params_variance"] == 0]
+        baseline_means = baseline_df[var_cols].mean().values
+
+        # Maximal distortion
+        max_dist_df = ansatz_df[ansatz_df["pulse_params_variance"] == max_var]
+        max_dist_means = max_dist_df[var_cols].mean().values
+
+        # Relative change: ratio of maximal distortion to zero distortion
+        # A value > 1 means distortion increased the coeff variance,
+        # a value < 1 means it decreased.
+        # Guard against division by zero with a small epsilon.
+        epsilon = 1e-30
+        delta = max_dist_means / np.maximum(baseline_means, epsilon)
+
+        # Propagate uncertainty via error propagation for f = a/b:
+        # σ_f/f = sqrt((σ_a/a)² + (σ_b/b)²)
+        baseline_stds = baseline_df[var_cols].std().values
+        max_dist_stds = max_dist_df[var_cols].std().values
+        rel_err = np.sqrt(
+            (np.nan_to_num(max_dist_stds) / np.maximum(max_dist_means, epsilon)) ** 2
+            + (np.nan_to_num(baseline_stds) / np.maximum(baseline_means, epsilon)) ** 2
+        )
+        delta_stds = delta * rel_err
+
+        color = next(color_it)
+
+        fig.add_scatter(
+            x=freq_indices,
+            y=delta,
+            error_y=dict(type="data", array=delta_stds, visible=show_error),
+            mode="lines+markers",
+            name=f"{circuit_name_to_str(ansatz)}",
+            marker=dict(
+                size=design.marker_size,
+                line=dict(width=design.marker_line_width),
+            ),
+            line=dict(color=color),
+        )
+
+    # Add a reference line at ratio = 1 (no change)
+    fig.add_hline(
+        y=1.0,
+        line_dash="dash",
+        line_color="gray",
+        line_width=1.5,
+    )
+
+    fig.update_layout(
+        title=f"Coeff. Var. Ratio (σ²={max_var} / σ²=0)",
+        xaxis_title="Frequency",
+        yaxis_title="Coefficient Variance Ratio",
+        template=design.template,
+        font=dict(size=design.font_size),
+    )
+
+    fig.update_yaxes(type="log")
+
+    return fig
 
 def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """

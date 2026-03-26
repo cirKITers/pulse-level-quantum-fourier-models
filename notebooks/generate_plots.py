@@ -14,6 +14,8 @@ scenarios = {
         "experiment_name": "study-1-2",
         "max_distortion": 0.012,
         "show_error": True,
+        # "ignore_ansatzes": ["Circuit_10", "Circuit_3", "Circuit_18", "Circuit_7", "Circuit_9", "Circuit_16"]
+        "ignore_ansatzes": ["Circuit_13", "Circuit_17", "Circuit_8", "Hardware_Efficient"]
     },
     # "study-2": {
     #     "experiment_name": "study-2-3",
@@ -26,6 +28,8 @@ for scenario, setting in scenarios.items():
     print(f"{'-' * 100}")
     print(f"\nScenario: {scenario}\n")
     print(f"{'-' * 100}")
+
+    ignore_ansatzes = setting.get("ignore_ansatzes", [])
 
     if not "experiment-id" in setting:
         print(
@@ -43,6 +47,10 @@ for scenario, setting in scenarios.items():
     df, hs = cache_df(run_ids, df=None)
 
     print(f"Hash for scenario: {hs}")
+
+    print(f"Ignoring Ansatzes: {ignore_ansatzes}")
+    for ansatz in ignore_ansatzes:
+        df = df[df["ansatz"] != ansatz]
 
     if scenario == "study-1":
         figures = viz_study_1(
