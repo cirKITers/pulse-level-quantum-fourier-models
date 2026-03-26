@@ -34,8 +34,8 @@ class design:
         "hourglass",
         "cross-thin",
     ]
-    prim_colors_lst = plotly.colors.qualitative.Dark2
-    sec_colors_lst = plotly.colors.qualitative.Pastel2
+    prim_colors_lst = plotly.colors.qualitative.T10
+    sec_colors_lst = plotly.colors.qualitative.Safe
     seq_colors = plotly.colors.sequential.dense_r
 
 
