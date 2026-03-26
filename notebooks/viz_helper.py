@@ -370,22 +370,18 @@ def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error
         max_dist_df = ansatz_df[ansatz_df["pulse_params_variance"] == max_var]
         max_dist_means = max_dist_df[var_cols].mean().values
 
-        # Delta: difference between maximal distortion and zero distortion
-        delta = max_dist_means - baseline_means
-
-        # Optional: propagate std as sqrt(std_max² + std_baseline²)
-        baseline_stds = baseline_df[var_cols].std().values
-        max_dist_stds = max_dist_df[var_cols].std().values
-        delta_stds = np.sqrt(
-            np.nan_to_num(baseline_stds) ** 2 + np.nan_to_num(max_dist_stds) ** 2
-        )
+        # Relative change: ratio of maximal distortion to zero distortion
+        # A value > 1 means distortion increased the coeff variance,
+        # a value < 1 means it decreased.
+        # Guard against division by zero with a small epsilon.
+        epsilon = 1e-30
+        delta = max_dist_means / np.maximum(baseline_means, epsilon)
 
         color = next(color_it)
 
         fig.add_scatter(
             x=freq_indices,
             y=delta,
-            error_y=dict(type="data", array=delta_stds, visible=show_error),
             mode="lines+markers",
             name=f"{circuit_name_to_str(ansatz)}",
             marker=dict(
@@ -395,13 +391,23 @@ def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error
             line=dict(color=color),
         )
 
+    # Add a reference line at ratio = 1 (no change)
+    fig.add_hline(
+        y=1.0,
+        line_dash="dash",
+        line_color="gray",
+        line_width=1.5,
+    )
+
     fig.update_layout(
-        title=f"Δ Coeff. Var. (σ²={max_var} − σ²=0)",
+        title=f"Coeff. Var. Ratio (σ²={max_var} / σ²=0)",
         xaxis_title="Frequency",
-        yaxis_title="Δ Coefficient Variance",
+        yaxis_title="Coefficient Variance Ratio",
         template=design.template,
         font=dict(size=design.font_size),
     )
+
+    fig.update_yaxes(type="log")
 
     return fig
 
