@@ -42,7 +42,7 @@ def register_pipelines() -> dict[str, Pipeline]:
     pipelines["study-3"] = (
         generation_model_pipeline() + processing_expressibility_pipeline()
     )
-    pipelines["training"] = (
+    pipelines["study-4"] = (
         generation_data_pipeline()
         + generation_model_pipeline()
         + processing_training_pipeline()

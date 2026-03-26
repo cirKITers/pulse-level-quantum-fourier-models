@@ -44,14 +44,14 @@
             "justMyCode": false
         },
         {
-            "name": "Training",
+            "name": "Study 4",
             "type": "debugpy",
             "request": "launch",
             "module": "kedro",
             "args": [
                 "run",
                 "--pipeline",
-                "training"
+                "study-4"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
