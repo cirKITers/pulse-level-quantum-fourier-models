@@ -377,11 +377,22 @@ def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error
         epsilon = 1e-30
         delta = max_dist_means / np.maximum(baseline_means, epsilon)
 
+        # Propagate uncertainty via error propagation for f = a/b:
+        # σ_f/f = sqrt((σ_a/a)² + (σ_b/b)²)
+        baseline_stds = baseline_df[var_cols].std().values
+        max_dist_stds = max_dist_df[var_cols].std().values
+        rel_err = np.sqrt(
+            (np.nan_to_num(max_dist_stds) / np.maximum(max_dist_means, epsilon)) ** 2
+            + (np.nan_to_num(baseline_stds) / np.maximum(baseline_means, epsilon)) ** 2
+        )
+        delta_stds = delta * rel_err
+
         color = next(color_it)
 
         fig.add_scatter(
             x=freq_indices,
             y=delta,
+            error_y=dict(type="data", array=delta_stds, visible=show_error),
             mode="lines+markers",
             name=f"{circuit_name_to_str(ansatz)}",
             marker=dict(
