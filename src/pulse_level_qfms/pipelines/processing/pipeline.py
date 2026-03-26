@@ -24,7 +24,7 @@ def create_fcc_pipeline(**kwargs) -> Pipeline:
                     "params:fcc.weighting",
                     "params:fcc.sample_axis",
                     "params:fcc.pulse_params_variance",
-                    "params:fcc.numerical_cap"
+                    "params:fcc.numerical_cap",
                 ],
                 outputs={
                     "fcc": "fcc",
@@ -95,6 +95,9 @@ def create_training_pipeline(**kwargs) -> Pipeline:
                     "params:train.loss_scalers",
                     "params:train.steps",
                     "params:train.learning_rate",
+                    "params:train.train_axis",
+                    "params:train.pulse_learning_rate",
+                    "params:train.pulse_grad_clip",
                 ],
                 outputs={
                     "model": "trained_model",

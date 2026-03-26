@@ -6,7 +6,7 @@ import optax
 import mlflow
 from torch.utils.data import DataLoader
 
-import numpy as np
+import jax.numpy as jnp
 
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Coefficients, FCC
@@ -34,7 +34,7 @@ class PulseFCC(FCC):
         weight: Optional[bool] = False,
         trim_redundant: Optional[bool] = True,
         **kwargs,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Shortcut method to get just the fourier fingerprint.
         This includes
@@ -57,7 +57,7 @@ class PulseFCC(FCC):
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: The fourier fingerprint
+            Tuple[jnp.ndarray, jnp.ndarray]: The fourier fingerprint
             and the frequency indices
         """
         _, coeffs, freqs = PulseFCC._calculate_coefficients(
@@ -76,8 +76,8 @@ class PulseFCC(FCC):
             # apply the mask on the fingerprint
             fourier_fingerprint = mask * fourier_fingerprint
 
-            row_mask = np.any(np.isfinite(fourier_fingerprint), axis=1)
-            col_mask = np.any(np.isfinite(fourier_fingerprint), axis=0)
+            row_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=1)
+            col_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=0)
 
             fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
 
@@ -92,7 +92,7 @@ class PulseFCC(FCC):
         sample_axis: str = "pulse",
         pulse_params_variance: float = 0.1,
         **kwargs,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Calculates the Fourier coefficients of a given model
         using `n_samples` and `seed`.
@@ -117,12 +117,12 @@ class PulseFCC(FCC):
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray]: Parameters and Coefficients of size NxK
+            Tuple[jnp.ndarray, jnp.ndarray]: Parameters and Coefficients of size NxK
         """
         if n_samples > 0:
             if scale:
                 total_samples = int(
-                    np.power(2, model.n_qubits) * n_samples * model.n_input_feat
+                    jnp.power(2, model.n_qubits) * n_samples * model.n_input_feat
                 )
             else:
                 total_samples = n_samples
@@ -162,10 +162,10 @@ class PulseFCC(FCC):
                         # Note, that the following steps are identical to what happens in
                         # _assimilate_batch
                         # [B_I, 1, B_R, ...]
-                        scaler = scaler.repeat(np.prod(model.degree), axis=0)
+                        scaler = scaler.repeat(jnp.prod(model.degree), axis=0)
                         # [..., B]
                         scaler = scaler.reshape(
-                            np.prod(model.degree) * total_samples,
+                            jnp.prod(model.degree) * total_samples,
                             *model.pulse_params.shape[1:],
                         )
                         # disable repeat for pulse parameters (to not further extend batch axis)
@@ -207,8 +207,8 @@ class PulseFCC(FCC):
         )
 
         # calculate variances and means over all samples (preserve freq. axis)
-        variances = np.abs(coeffs).var(axis=1)
-        means = np.abs(coeffs).mean(axis=1)
+        variances = jnp.abs(coeffs).var(axis=1)
+        means = jnp.abs(coeffs).mean(axis=1)
 
         # log values for each frequency component
         for freq, var, mean in zip(freqs, variances, means, strict=True):
@@ -227,7 +227,7 @@ def calculate_fcc(
     weighting: bool,
     sample_axis: str,
     pulse_params_variance: float,
-    numerical_cap:float
+    numerical_cap: float,
 ):
     log.info(f"Seed for FCC: {seed}")
 
@@ -259,6 +259,35 @@ def calculate_fcc(
     }
 
 
+def log_metrics(model, data, step, prefix=""):
+    domain_samples = data.dataset.tensors[0].numpy()
+    fourier_series = data.dataset.tensors[1].numpy()
+    target_coeffs = data.dataset.tensors[2].numpy()
+
+    prediction = model(
+        params=model.params,
+        inputs=domain_samples,
+        execution_type="expval",
+        force_mean=True,
+    )
+    predicted_coeffs = Coefficients.get_spectrum(
+        model,
+        shift=True,
+        params=model.params,
+        execution_type="expval",
+        force_mean=True,
+    )[0]
+
+    mlflow.log_metric(
+        f"{prefix}_mse", Losses.mse(prediction, fourier_series).item(), step=step
+    )
+    mlflow.log_metric(
+        f"{prefix}_fmse",
+        Losses.fmse(predicted_coeffs, target_coeffs).item(),
+        step=step,
+    )
+
+
 def train_model(
     model: Model,
     train_loader: DataLoader,
@@ -268,8 +297,46 @@ def train_model(
     loss_scalers: List,
     steps: int,
     learning_rate: float,
+    train_axis: List[str],  # either ["unitary"] or ["unitary", "pulse"]
+    pulse_learning_rate: Optional[float] = None,
+    pulse_grad_clip: Optional[float] = 1e-2,
 ) -> None:
-    opt = optax.adam(learning_rate)
+    train_pulse = "pulse" in train_axis
+    gate_mode = "pulse" if train_pulse else "unitary"
+
+    # create params dict
+    params = {"unitary": model.params}
+    if train_pulse:
+        # pulse_params scaler: starts at ones (i.e. no deviation from default)
+        params["pulse"] = jnp.ones_like(model.pulse_params)
+
+    # set a per-group optimizer
+    pulse_lr = (
+        pulse_learning_rate if pulse_learning_rate is not None else learning_rate * 0.1
+    )
+    log.info(
+        f"Learning rates - unitary: {learning_rate}, "
+        f"pulse: {pulse_lr if train_pulse else 'N/A (not training pulse params)'}"
+    )
+
+    if train_pulse:
+        # Separate optimizer chains: aggressive clipping + smaller lr for pulse
+        pulse_opt = optax.chain(
+            optax.clip_by_global_norm(pulse_grad_clip),
+            optax.adam(pulse_lr),
+        )
+        unitary_opt = optax.adam(learning_rate)
+
+        # Combine into a single optimizer keyed by the param labels
+        label_fn = lambda params: {k: k for k in params}  # noqa: E731
+        opt = optax.multi_transform(
+            {"unitary": unitary_opt, "pulse": pulse_opt},
+            label_fn,
+        )
+    else:
+        opt = optax.adam(learning_rate)
+
+    opt_state = opt.init(params)
 
     try:
         loss_functions = [getattr(Losses, loss) for loss in loss_functions]
@@ -277,62 +344,59 @@ def train_model(
         log.error(f"Loss function is not valid. {loss_functions} must be in {Losses}")
         raise
 
-    def cost(params, targets, **kwargs):
-        predictions = model(params=params, **kwargs)
-
-        # map loss_scaler and loss_function to a single loss using arbitrary numbers
-        return np.sum(
-            ls * lf(predictions, targets)
-            for ls, lf in zip(loss_scalers, loss_functions)
+    log.info(f"Using gate mode: {gate_mode} for training")
+    if train_pulse:
+        log.info(
+            f"Pulse params are trainable (pulse_lr={pulse_lr}, "
+            f"grad_clip={pulse_grad_clip})"
         )
 
-    def log_metrics(model, data, step, prefix=""):
-        domain_samples = data.dataset.tensors[0].numpy()
-        fourier_series = data.dataset.tensors[1].numpy()
-        target_coeffs = data.dataset.tensors[2].numpy()
+    def cost(params_dict, targets, **kwargs):
+        predictions = model(
+            params=params_dict["unitary"],
+            pulse_params=params_dict.get("pulse", None) if train_pulse else None,
+            **kwargs,
+        )
 
-        prediction = model(
-            params=model.params,
-            inputs=domain_samples,
-            noise_params=noise_params,
-            execution_type="expval",
-            force_mean=True,
-        )
-        predicted_coeffs = Coefficients.get_spectrum(
-            model,
-            shift=True,
-            params=model.params,
-            noise_params=noise_params,
-            execution_type="expval",
-            force_mean=True,
-        )[0]
-
-        mlflow.log_metric(
-            f"{prefix}_mse", Losses.mse(prediction, fourier_series).item(), step=step
-        )
-        mlflow.log_metric(
-            f"{prefix}_fmse",
-            Losses.fmse(predicted_coeffs, target_coeffs).item(),
-            step=step,
-        )
+        total_loss = jnp.array(0.0)
+        for ls, lf in zip(loss_scalers, loss_functions):
+            total_loss = total_loss + ls * lf(predictions, targets)
+        return total_loss
 
     for step in track(range(steps), description="Training..", total=steps):
 
         for domain_samples, fourier_samples, coefficients in train_loader:
-            domain_samples = domain_samples.numpy()
-            fourier_samples = fourier_samples.numpy()
+            domain_samples = jnp.array(domain_samples.numpy())
+            fourier_samples = jnp.array(fourier_samples.numpy())
 
-            model.params = opt.step(
-                cost,
-                model.params,
+            grads = jax.grad(cost)(
+                params,
                 inputs=domain_samples,
                 targets=fourier_samples,
-                noise_params=noise_params,
                 execution_type="expval",
                 force_mean=True,
+                gate_mode=gate_mode,
+                noise_params=noise_params,
+            )
+            updates, opt_state = opt.update(grads, opt_state, params)
+            params = optax.apply_updates(params, updates)
+
+        model.params = params["unitary"]
+        if train_pulse:
+            model.pulse_params = params["pulse"]
+            mlflow.log_metric(
+                "pulse_scaler_mean", float(jnp.mean(params["pulse"])), step=step
+            )
+            mlflow.log_metric(
+                "pulse_scaler_std", float(jnp.std(params["pulse"])), step=step
             )
 
-        log_metrics(model, data=train_loader, step=step, prefix="train")
+        log_metrics(
+            model,
+            data=train_loader,
+            step=step,
+            prefix="train",
+        )
         # log_metrics(model, data=valid_loader, step=step, prefix="valid")
 
     return {

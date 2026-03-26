@@ -12,19 +12,28 @@ model:
   seed: 1000
   n_qubits: 3
   n_layers: 1
-  circuit_type: "Circuit_17" # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
+  circuit_type: "Circuit_3" # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
   data_reupload: True
   encoding_gates: ["RY"]
   output_qubit: -1
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]
+  noise_params:
+    BitFlip: 0.0
+    PhaseFlip: 0.0
+    AmplitudeDamping: 0.0
+    PhaseDamping: 0.0
+    Depolarizing: 0.0
 
 train:
-  steps: 1000
+  steps: 10
   learning_rate: 5e-3
+  pulse_learning_rate: 5e-4  # 10x smaller than unitary lr for pulse sensitivity
+  pulse_grad_clip: 1e-2      # clip pulse gradients to avoid large jumps
   batch_size: -1
   loss_functions: ["mse"]
   loss_scalers: [1.0]
+  train_axis: ["unitary", "pulse"]  # subset of ["unitary", "pulse"]
 
 fcc:
   seed: 1000
