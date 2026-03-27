@@ -313,10 +313,10 @@ def train_model(
     loss_scalers: List,
     steps: int,
     learning_rate: float,
-    train_axis: List[str],  # either ["unitary"] or ["unitary", "pulse"]
+    train_unitary: bool,
+    train_pulse: bool,
     pulse_learning_rate: Optional[float] = None,
 ) -> None:
-    train_pulse = "pulse" in train_axis
     gate_mode = "pulse" if train_pulse else "unitary"
 
     # create params dict

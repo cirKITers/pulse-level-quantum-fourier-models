@@ -95,7 +95,8 @@ def create_training_pipeline(**kwargs) -> Pipeline:
                     "params:train.loss_scalers",
                     "params:train.steps",
                     "params:train.learning_rate",
-                    "params:train.train_axis",
+                    "params:train.train_unitary",
+                    "params:train.train_pulse",
                     "params:train.pulse_learning_rate",
                 ],
                 outputs={
