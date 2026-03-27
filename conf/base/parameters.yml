@@ -26,14 +26,13 @@ model:
     Depolarizing: 0.0
 
 train:
-  steps: 10
-  learning_rate: 5e-3
-  pulse_learning_rate: 5e-4  # 10x smaller than unitary lr for pulse sensitivity
-  pulse_grad_clip: 1e-2      # clip pulse gradients to avoid large jumps
+  steps: 200
+  learning_rate: 1e-3
+  pulse_learning_rate: 1e-4  # 10x smaller than unitary lr for pulse sensitivity
   batch_size: -1
   loss_functions: ["mse"]
   loss_scalers: [1.0]
-  train_axis: ["unitary", "pulse"]  # subset of ["unitary", "pulse"]
+  train_axis: ["unitary"]  # subset of ["unitary", "pulse"]
 
 fcc:
   seed: 1000

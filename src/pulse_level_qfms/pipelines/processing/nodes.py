@@ -259,7 +259,15 @@ def calculate_fcc(
     }
 
 
-def log_metrics(model, data, step, prefix=""):
+def log_metrics(
+    model,
+    data,
+    step,
+    prefix="",
+    gate_mode="unitary",
+    noise_params=None,
+    pulse_params=None,
+):
     domain_samples = data.dataset.tensors[0].numpy()
     fourier_series = data.dataset.tensors[1].numpy()
     target_coeffs = data.dataset.tensors[2].numpy()
@@ -269,6 +277,9 @@ def log_metrics(model, data, step, prefix=""):
         inputs=domain_samples,
         execution_type="expval",
         force_mean=True,
+        gate_mode=gate_mode,
+        pulse_params=pulse_params,
+        noise_params=noise_params,
     )
     predicted_coeffs = Coefficients.get_spectrum(
         model,
@@ -276,6 +287,9 @@ def log_metrics(model, data, step, prefix=""):
         params=model.params,
         execution_type="expval",
         force_mean=True,
+        gate_mode=gate_mode,
+        pulse_params=pulse_params,
+        noise_params=noise_params,
     )[0]
 
     mlflow.log_metric(
@@ -299,7 +313,6 @@ def train_model(
     learning_rate: float,
     train_axis: List[str],  # either ["unitary"] or ["unitary", "pulse"]
     pulse_learning_rate: Optional[float] = None,
-    pulse_grad_clip: Optional[float] = 1e-2,
 ) -> None:
     train_pulse = "pulse" in train_axis
     gate_mode = "pulse" if train_pulse else "unitary"
@@ -321,10 +334,7 @@ def train_model(
 
     if train_pulse:
         # Separate optimizer chains: aggressive clipping + smaller lr for pulse
-        pulse_opt = optax.chain(
-            optax.clip_by_global_norm(pulse_grad_clip),
-            optax.adam(pulse_lr),
-        )
+        pulse_opt = optax.adam(pulse_lr)
         unitary_opt = optax.adam(learning_rate)
 
         # Combine into a single optimizer keyed by the param labels
@@ -346,10 +356,7 @@ def train_model(
 
     log.info(f"Using gate mode: {gate_mode} for training")
     if train_pulse:
-        log.info(
-            f"Pulse params are trainable (pulse_lr={pulse_lr}, "
-            f"grad_clip={pulse_grad_clip})"
-        )
+        log.info(f"Pulse params are trainable (pulse_lr={pulse_lr})")
 
     def cost(params_dict, targets, **kwargs):
         predictions = model(
@@ -396,8 +403,13 @@ def train_model(
             data=train_loader,
             step=step,
             prefix="train",
+            gate_mode=gate_mode,
+            noise_params=noise_params,
+            pulse_params=params.get("pulse", None) if train_pulse else None,
         )
-        # log_metrics(model, data=valid_loader, step=step, prefix="valid")
+        # log_metrics(model, data=valid_loader, step=step, prefix="valid",
+        #             gate_mode=gate_mode,
+        #             pulse_params=params.get("pulse", None) if train_pulse else None)
 
     return {
         "model": model,

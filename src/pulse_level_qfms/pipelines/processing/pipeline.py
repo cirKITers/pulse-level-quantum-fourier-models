@@ -97,7 +97,6 @@ def create_training_pipeline(**kwargs) -> Pipeline:
                     "params:train.learning_rate",
                     "params:train.train_axis",
                     "params:train.pulse_learning_rate",
-                    "params:train.pulse_grad_clip",
                 ],
                 outputs={
                     "model": "trained_model",
