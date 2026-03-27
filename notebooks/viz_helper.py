@@ -1,10 +1,24 @@
 import os
+import re
 import plotly
 import plotly.graph_objects as go
 from typing import List
 import numpy as np
 import pandas as pd
 import string
+
+
+def _natural_sort_key(s: str):
+    """Sort key that handles embedded numbers naturally.
+    E.g. Circuit_3 < Circuit_8 < Circuit_13 instead of lexicographic order."""
+    return [
+        int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", s)
+    ]
+
+
+def sort_ansatzes(ansatzes):
+    """Sort ansatz names using natural ordering."""
+    return sorted(ansatzes, key=_natural_sort_key)
 
 
 class design:
@@ -91,6 +105,14 @@ def viz_study_2(df, max_distortion, show_error):
     return figures
 
 
+def viz_study_4(df, show_error):
+    figures = []
+
+    figures.append(pulse_param_mse_comparison(df, show_error))
+
+    return figures
+
+
 def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Given a dataframe with fccs for different distortions,
@@ -109,7 +131,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
-    ansatzes = sorted(filtered_df["ansatz"].unique())
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
     variances = sorted(filtered_df["pulse_params_variance"].unique())
 
     symbol_it = iter(design.symbols_lst)
@@ -221,7 +243,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
-    ansatzes = sorted(filtered_df["ansatz"].unique())
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
     variances = sorted(filtered_df["pulse_params_variance"].unique())
     COEFF_VAR_CUTOFF = 5e-9
 
@@ -238,7 +260,6 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             circuit_distortion_df = filtered_df[filtered_df["ansatz"] == ansatz][
                 filtered_df["pulse_params_variance"] == variance
             ]
-
 
             means = (
                 circuit_distortion_df[[f"coeff.var.f{idx}" for idx in freq_indices]]
@@ -331,6 +352,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     return fig
 
+
 def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Plot the difference in coefficient variance between zero distortion
@@ -353,7 +375,7 @@ def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types and determine the maximal variance present
-    ansatzes = sorted(filtered_df["ansatz"].unique())
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
     variances = sorted(filtered_df["pulse_params_variance"].unique())
     max_var = max(variances)
 
@@ -422,6 +444,7 @@ def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error
 
     return fig
 
+
 def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Given a dataframe with fccs for different distortions,
@@ -436,7 +459,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
-    ansatzes = sorted(filtered_df["ansatz"].unique())
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
@@ -487,7 +510,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
-    ansatzes = sorted(filtered_df["ansatz"].unique())
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
@@ -534,7 +557,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
     # Get unique circuit types
-    ansatzes = sorted(filtered_df["ansatz"].unique())
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
@@ -560,6 +583,56 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
         title="Trace Distance over Pulse Parameter Variances",
         xaxis_title="Pulse Parameter Variances",
         yaxis_title="Trace Distance",
+        template=design.template,
+        font=dict(size=design.font_size),
+    )
+
+    return fig
+
+
+def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
+    """
+    Compare the final train MSE across circuits for train_pulse=True vs False.
+    Produces a grouped bar chart with circuits on the x-axis and two bars per
+    circuit (one for each train_pulse setting), including error bars over seeds.
+
+    Args:
+        df (pd.DataFrame): DataFrame with columns "ansatz", "train_pulse",
+            "train_mse", and "data.seed".
+        show_error (bool): Whether to display error bars. Defaults to True.
+
+    Returns:
+        go.Figure: The plotly figure.
+    """
+    fig = go.Figure()
+
+    ansatzes = sort_ansatzes(df["ansatz"].unique())
+    x_labels = [circuit_name_to_str(a) for a in ansatzes]
+
+    color_it = iter(design.prim_colors_lst)
+    for train_pulse, label in [(False, "Unitary only"), (True, "Unitary + Pulse")]:
+        color = next(color_it)
+
+        means = []
+        stds = []
+        for ansatz in ansatzes:
+            subset = df[(df["ansatz"] == ansatz) & (df["train_pulse"] == train_pulse)]
+            means.append(subset["train_mse"].mean())
+            stds.append(subset["train_mse"].std())
+
+        fig.add_bar(
+            x=x_labels,
+            y=means,
+            error_y=dict(type="data", array=stds, visible=show_error),
+            name=label,
+            marker=dict(color=color),
+        )
+
+    fig.update_layout(
+        title="Train MSE: Unitary vs. Unitary + Pulse",
+        xaxis_title="Circuit",
+        yaxis_title="Train MSE",
+        barmode="group",
         template=design.template,
         font=dict(size=design.font_size),
     )

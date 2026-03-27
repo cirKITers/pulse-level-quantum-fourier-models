@@ -196,6 +196,11 @@ def generate_df(run_ids: List[str]):
         if "train_mse" in run.data.metrics:
             df.loc[it, "train_mse"] = run.data.metrics["train_mse"]
 
+        if "train.train_pulse" in run.data.params:
+            df.loc[it, "train_pulse"] = (
+                run.data.params["train.train_pulse"].lower() == "true"
+            )
+
         if "fidelity" in run.data.metrics:
             df.loc[it, "fidelity"] = float(run.data.metrics["fidelity"])
             df.loc[it, "fidelity.seed"] = int(run.data.params["fidelity.seed"])
