@@ -290,7 +290,9 @@ def log_metrics(
         gate_mode=gate_mode,
         pulse_params=pulse_params,
         noise_params=noise_params,
-    )[0]
+    )[
+        0
+    ]  # get only coeffs, not freqs
 
     mlflow.log_metric(
         f"{prefix}_mse", Losses.mse(prediction, fourier_series).item(), step=step
