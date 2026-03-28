@@ -94,6 +94,7 @@ def viz_study_1(df, max_distortion, show_error):
     figures.append(coeff_mean_over_distortion(df, max_distortion, show_error))
     figures.append(coeff_var_over_distortion(df, max_distortion, show_error))
     figures.append(coeff_var_delta_over_distortion(df, max_distortion, show_error))
+    figures.append(frequency_histogram_by_distortion(df, max_distortion, show_error))
 
     return figures
 
@@ -103,6 +104,7 @@ def viz_study_2(df, max_distortion, show_error):
 
     figures.append(fidelity_over_distortion(df, max_distortion, show_error))
     figures.append(trace_distance_over_distortion(df, max_distortion, show_error))
+    figures.append(frequency_histogram_by_distortion(df, max_distortion, show_error))
 
     return figures
 
@@ -223,6 +225,102 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     )
 
     fig.update_yaxes(type="log")
+
+    return fig
+
+
+def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_error):
+    """
+    Plot the number of active frequencies (|coeff| > threshold) per circuit,
+    colored by distortion level.  Each (circuit, variance) combination is
+    shown as a dot whose color encodes the pulse-parameter variance,
+    using the same sequential colorscale as ``coeff_mean_over_distortion``.
+
+    Args:
+        df (pd.DataFrame): DataFrame with coeff.mean.f* columns,
+            ``ansatz`` and ``pulse_params_variance``.
+        max_distortion: Upper bound on pulse_params_variance to include.
+        show_error: Whether to display error bars (std over seeds).
+    """
+    THRESHOLD = 1e-10
+    fig = go.Figure()
+
+    # Extract frequency indices from column names
+    coeff_cols = [col for col in df.columns if col.startswith("coeff.mean.f")]
+    freq_indices = sorted([float(col.split("coeff.mean.f")[1]) for col in coeff_cols])
+    mean_cols = [f"coeff.mean.f{idx}" for idx in freq_indices]
+
+    # Filter rows where pulse_params_variance is at most max_distortion
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
+
+    # Get unique circuit types and variances
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
+    variances = sorted(filtered_df["pulse_params_variance"].unique())
+    x_labels = [circuit_name_to_str(a) for a in ansatzes]
+
+    # Plot data traces (one per variance level, shared color across circuits)
+    color_it = iter(plotly.colors.sample_colorscale(design.seq_colors, len(variances)))
+    for variance in variances:
+        color = next(color_it)
+
+        means = []
+        stds = []
+        for ansatz in ansatzes:
+            subset = filtered_df[
+                (filtered_df["ansatz"] == ansatz)
+                & (filtered_df["pulse_params_variance"] == variance)
+            ]
+            # Per-seed: count frequencies whose mean coefficient > threshold
+            n_freqs_per_seed = (subset[mean_cols].abs() > THRESHOLD).sum(axis=1)
+            means.append(n_freqs_per_seed.mean())
+            stds.append(n_freqs_per_seed.std())
+
+        fig.add_scatter(
+            x=x_labels,
+            y=means,
+            error_y=dict(type="data", array=stds, visible=show_error),
+            mode="markers",
+            showlegend=False,
+            marker=dict(
+                size=design.marker_size,
+                color=color,
+                line=dict(width=design.marker_line_width),
+            ),
+        )
+
+    # Legend: only first and last variance levels (same pattern as coeff_mean)
+    color_it = iter(plotly.colors.sample_colorscale(design.seq_colors, len(variances)))
+    for it, variance in enumerate(variances):
+        color = next(color_it)
+
+        if it > 0 and it < len(variances) - 1:
+            continue
+        fig.add_scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            name=f"σ²={variance}",
+            legendgroup="variance",
+            showlegend=True,
+            marker=dict(
+                size=design.marker_size,
+                line=dict(width=design.marker_line_width),
+                symbol="circle",
+                color=color,
+            ),
+        )
+
+    fig.update_layout(
+        title="Active Frequencies over PP Var.",
+        xaxis_title="Circuit",
+        yaxis_title="Number of Frequencies (|c| > 1e-10)",
+        template=design.template,
+        font=dict(size=design.font_size),
+        legend_indentation=-12,
+        legend_tracegroupgap=3,
+    )
+
+    fig.update_yaxes(dtick=1)
 
     return fig
 
