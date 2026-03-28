@@ -72,7 +72,7 @@ def create_expressibility_pipeline(**kwargs) -> Pipeline:
                     "params:expressibility.pulse_params_variance",
                 ],
                 outputs={
-                    "fidelity": "fidelity",
+                    "expressibility": "expressibility",
                 },
             ),
         ]

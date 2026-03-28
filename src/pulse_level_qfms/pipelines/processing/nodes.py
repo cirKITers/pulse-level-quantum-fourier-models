@@ -176,8 +176,8 @@ class PulseFCC(FCC):
                     scaler = 1.0 + pulse_params_variance * jax.random.normal(
                         random_key,
                         shape=(
-                            *model.pulse_params.shape[:-1],
                             total_samples,
+                            *model.pulse_params.shape[1:],
                         ),
                     )
                     log.info(f"Sampling pulse parameters")
@@ -482,7 +482,7 @@ def evaluate_expressibility(
     log.info(f"Seed for expressibility: {seed}")
 
     if scale:
-        total_samples = int(np.power(2, model.n_qubits) * n_samples)
+        total_samples = int(jnp.power(2, model.n_qubits) * n_samples)
     else:
         total_samples = n_samples
 
@@ -493,13 +493,15 @@ def evaluate_expressibility(
     scaler = 1.0 + pulse_params_variance * jax.random.normal(
         random_key,
         shape=(
-            *model.pulse_params.shape[:-1],
-            total_samples,
+            total_samples * 2,  # will get duplicated in _sample_state_fidelities
+            *model.pulse_params.shape[1:],
         ),
     )
+    # same logic as for fcc; we only want to batch for inputs and params
+    # but leave the pulse params as is
     model.repeat_batch_axis = [True, True, False]
 
-    input_domain, bins, dist_circuit = Expressibility.state_fidelities(
+    bins, dist_circuit = Expressibility.state_fidelities(
         seed=seed,
         n_samples=total_samples,
         n_bins=n_bins,
@@ -509,14 +511,14 @@ def evaluate_expressibility(
         gate_mode="pulse",
     )
 
-    input_domain, dist_haar = Expressibility.haar_integral(
+    dist_haar = Expressibility.haar_integral(
         n_qubits=model.n_qubits,
         n_bins=n_bins,
         cache=True,
     )
 
     kl_dist = Expressibility.kullback_leibler_divergence(dist_circuit, dist_haar)
-    expressibility = np.mean(kl_dist)
+    expressibility = jnp.mean(kl_dist)
 
     # average over all samples
     mlflow.log_metric("expressibility", expressibility)
