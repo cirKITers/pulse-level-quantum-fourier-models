@@ -59,8 +59,10 @@ def circuit_name_to_str(circuit_name: str):
         circuit_name = circuit_name.replace("Circuit", "C")
     elif "Hardware_Efficient" in circuit_name:
         circuit_name = "HEA"
+    elif "Strongly_Entangling" in circuit_name:
+        circuit_name = "SEA"
 
-    circuit_name = circuit_name.replace("_", " ")
+    circuit_name = circuit_name.replace("_", "")
 
     return circuit_name
 
