@@ -49,7 +49,7 @@ class design:
         "hourglass",
         "cross-thin",
     ]
-    prim_colors_lst = plotly.colors.qualitative.T10
+    prim_colors_lst = plotly.colors.qualitative.Vivid
     sec_colors_lst = plotly.colors.qualitative.Safe
     seq_colors = plotly.colors.sequential.dense_r
 
@@ -610,7 +610,7 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
     color_it = iter(design.prim_colors_lst)
-    for train_pulse, label in [(False, "Unitary only"), (True, "Unitary + Pulse")]:
+    for train_pulse, label in [(False, "Unitary"), (True, "+ Pulse")]:
         color = next(color_it)
 
         means = []
@@ -629,9 +629,9 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
         )
 
     fig.update_layout(
-        title="Train MSE: Unitary vs. Unitary + Pulse",
+        title="MSE: Unitary vs. Unitary + Pulse",
         xaxis_title="Circuit",
-        yaxis_title="Train MSE",
+        yaxis_title="MSE",
         barmode="group",
         template=design.template,
         font=dict(size=design.font_size),
