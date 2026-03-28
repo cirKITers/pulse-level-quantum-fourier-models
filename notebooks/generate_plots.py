@@ -3,6 +3,7 @@ from viz_helper import (
     save_figures,
     viz_study_1,
     viz_study_2,
+    viz_study_4,
 )
 
 # enable caching?
