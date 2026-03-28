@@ -3,10 +3,12 @@
 set -e
 
 # run experiments with all different circuits
-MAX_JOBS=20
+MAX_JOBS=22
 
-# Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
-for circuit in Hardware_Efficient Circuit_15 Circuit_16 Circuit_17 Circuit_18 Circuit_19
+# Circuits without full spectrum
+# for circuit in Circuit_3 Circuit_9 Circuit_10 Circuit_16 Circuit_18 Circuit_7 Circuit_13 Hardware_Efficient 
+# Circuits with full spectrum
+for circuit in Circuit_2 Circuit_4 Circuit_8 Circuit_14 Circuit_15 Circuit_17 Circuit_19 Circuit_20 Strongly_Entangling
 do
     # 0.0 0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.010 0.011 0.012 0.013 0.014 0.015 0.016 0.017 0.018 0.019 0.020
     for variance in 0.0 0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.010
@@ -20,7 +22,7 @@ do
             done
 
             echo "--- $circuit Ansatz, Variance $variance, Seed $seed ---"
-            uv run kedro run --pipeline "study-2" --params="expressibility.seed=$seed,expressibility.pulse_params_variance=$variance,model.circuit_type=$circuit" &
+            uv run kedro run --pipeline "study-4" --params="expressibility.seed=$seed,expressibility.pulse_params_variance=$variance,model.circuit_type=$circuit" &
 
             sleep 30
         done
