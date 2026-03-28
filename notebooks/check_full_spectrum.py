@@ -36,20 +36,11 @@ for circuit_type in ansatzes:
 
     fp, freqs = FCC.get_fourier_fingerprint(model=model, **kwargs)
 
+    no_coeffs[circuit_type] = fp.shape[0]
     if fp.shape[0] < (model.frequencies[0].size // 2) - 1:  # unique correlations -1
         print(f"Skipping {circuit_type} as it does not have a full spectrum")
-        no_coeffs[circuit_type] = fp.shape[0]
         continue
 
-    # fcc = FCC.get_fcc(model=model, **kwargs)
-    # print(f"FCC for {circuit_type}: {fcc}")
-    # fccs[circuit_type] = fcc
-
-# # print fccs for circuits sorted by values
-# with open("fccs.csv", "w") as f:
-#     for circuit_type, fcc in sorted(fccs.items(), key=lambda item: item[1]):
-#         print(f"{circuit_type}: {fcc}")
-#         f.write(f"{circuit_type},{fcc}\n")
 
 with open("no_coeffs.csv", "w") as f:
     for circuit_type, n_coeffs in sorted(no_coeffs.items(), key=lambda item: item[1]):
