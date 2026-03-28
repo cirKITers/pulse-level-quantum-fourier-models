@@ -37,9 +37,6 @@ for circuit_type in ansatzes:
     fp, freqs = FCC.get_fourier_fingerprint(model=model, **kwargs)
 
     no_coeffs[circuit_type] = fp.shape[0]
-    if fp.shape[0] < (model.frequencies[0].size // 2) - 1:  # unique correlations -1
-        print(f"Skipping {circuit_type} as it does not have a full spectrum")
-        continue
 
 
 with open("no_coeffs.csv", "w") as f:
