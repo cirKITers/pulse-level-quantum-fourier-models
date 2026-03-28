@@ -511,7 +511,7 @@ def evaluate_expressibility(
         gate_mode="pulse",
     )
 
-    dist_haar = Expressibility.haar_integral(
+    bins, dist_haar = Expressibility.haar_integral(
         n_qubits=model.n_qubits,
         n_bins=n_bins,
         cache=True,
