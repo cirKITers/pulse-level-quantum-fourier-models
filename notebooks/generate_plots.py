@@ -22,6 +22,10 @@ scenarios = {
     #     "max_distortion": 0.01,
     #     "show_error": True,
     # },
+    "study-4": {
+        "experiment_name": "study-4-1",
+        "show_error": True,
+    },
 }
 
 for scenario, setting in scenarios.items():
@@ -63,6 +67,11 @@ for scenario, setting in scenarios.items():
         figures = viz_study_2(
             df,
             max_distortion=setting["max_distortion"],
+            show_error=setting["show_error"],
+        )
+    elif scenario == "study-4":
+        figures = viz_study_4(
+            df,
             show_error=setting["show_error"],
         )
 
