@@ -17,3 +17,23 @@ The other `study-x.sh` files then specify *what* is done in a single job.
 To submit a job, you can use `sbatch`, e.g. `sbatch ./scripts/slurm-job.sh`
 
 You can view all existing experiments using `uv run mlflow experiments search`.
+
+
+## Studies
+
+### Study-1
+
+This study primarily focusses on the FCC and coefficient variances and how they change when the pulse parameters are perturbed.
+
+### Study-2
+
+In this study, we evaluate how the fidelity and trace distance changes when the pulse parameters are perturbed.
+
+### Study-3
+
+Similarly to study-1 but we look at the expressibility instead.
+
+### Study-4
+
+This study evaluates the different circuits by training on a Fourier series dataset.
+Here, the pulse parameters are either included in the optimization or not.
