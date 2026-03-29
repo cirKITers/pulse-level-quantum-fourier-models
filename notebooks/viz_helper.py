@@ -242,21 +242,21 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
     Plot the number of active frequencies (|coeff| > threshold) per circuit,
     colored by distortion level.  Each (circuit, variance) combination is
     shown as a dot whose color encodes the pulse-parameter variance,
-    using the same sequential colorscale as ``coeff_mean_over_distortion``.
+    using the same sequential colorscale as ``coeff_var_over_distortion``.
 
     Args:
-        df (pd.DataFrame): DataFrame with coeff.mean.f* columns,
+        df (pd.DataFrame): DataFrame with coeff.var.f* columns,
             ``ansatz`` and ``pulse_params_variance``.
         max_distortion: Upper bound on pulse_params_variance to include.
         show_error: Whether to display error bars (std over seeds).
     """
-    THRESHOLD = 1e-10
+    THRESHOLD = 10e-6
     fig = go.Figure()
 
     # Extract frequency indices from column names
-    coeff_cols = [col for col in df.columns if col.startswith("coeff.mean.f")]
-    freq_indices = sorted([float(col.split("coeff.mean.f")[1]) for col in coeff_cols])
-    mean_cols = [f"coeff.mean.f{idx}" for idx in freq_indices]
+    coeff_cols = [col for col in df.columns if col.startswith("coeff.var.f")]
+    freq_indices = sorted([float(col.split("coeff.var.f")[1]) for col in coeff_cols])
+    var_cols = [f"coeff.var.f{idx}" for idx in freq_indices]
 
     # Filter rows where pulse_params_variance is at most max_distortion
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
@@ -271,21 +271,21 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
     for variance in variances:
         color = next(color_it)
 
-        means = []
+        vars = []
         stds = []
         for ansatz in ansatzes:
             subset = filtered_df[
                 (filtered_df["ansatz"] == ansatz)
                 & (filtered_df["pulse_params_variance"] == variance)
             ]
-            # Per-seed: count frequencies whose mean coefficient > threshold
-            n_freqs_per_seed = (subset[mean_cols].abs() > THRESHOLD).sum(axis=1)
-            means.append(n_freqs_per_seed.mean())
+            # Per-seed: count frequencies whose var coefficient > threshold
+            n_freqs_per_seed = (subset[var_cols].abs() > THRESHOLD).sum(axis=1)
+            vars.append(n_freqs_per_seed.var())
             stds.append(n_freqs_per_seed.std())
 
         fig.add_scatter(
             x=x_labels,
-            y=means,
+            y=vars,
             error_y=dict(type="data", array=stds, visible=show_error),
             mode="markers",
             showlegend=False,
@@ -296,7 +296,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
             ),
         )
 
-    # Legend: only first and last variance levels (same pattern as coeff_mean)
+    # Legend: only first and last variance levels (same pattern as coeff_var)
     color_it = iter(plotly.colors.sample_colorscale(design.seq_colors, len(variances)))
     for it, variance in enumerate(variances):
         color = next(color_it)
@@ -321,7 +321,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
     fig.update_layout(
         title="# of Frequencies over PP Var.",
         xaxis_title="Circuit",
-        yaxis_title="# of Frequencies (|c| > 1e-10)",
+        yaxis_title="# of Frequencies",
         template=design.template,
         font=dict(size=design.font_size),
         legend_indentation=-12,
