@@ -271,7 +271,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
     for variance in variances:
         color = next(color_it)
 
-        vars = []
+        means = []
         stds = []
         for ansatz in ansatzes:
             subset = filtered_df[
@@ -280,12 +280,12 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
             ]
             # Per-seed: count frequencies whose var coefficient > threshold
             n_freqs_per_seed = (subset[var_cols].abs() > THRESHOLD).sum(axis=1)
-            vars.append(n_freqs_per_seed.var())
+            means.append(n_freqs_per_seed.mean())
             stds.append(n_freqs_per_seed.std())
 
         fig.add_scatter(
             x=x_labels,
-            y=vars,
+            y=means,
             error_y=dict(type="data", array=stds, visible=show_error),
             mode="markers",
             showlegend=False,
