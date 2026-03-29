@@ -29,3 +29,6 @@ module load devel/python/3.12.3
 
 cd ~/pulse-level-quantum-fourier-models
 source ./scripts/study-1.sh
+source ./scripts/study-2.sh
+source ./scripts/study-3.sh
+source ./scripts/study-4.sh
