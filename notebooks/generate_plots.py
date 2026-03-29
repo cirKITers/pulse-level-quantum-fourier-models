@@ -3,6 +3,7 @@ from viz_helper import (
     save_figures,
     viz_study_1,
     viz_study_2,
+    viz_study_3,
     viz_study_4,
 )
 
@@ -66,6 +67,12 @@ for scenario, setting in scenarios.items():
 
     elif scenario == "study-2":
         figures = viz_study_2(
+            df,
+            max_distortion=setting["max_distortion"],
+            show_error=setting["show_error"],
+        )
+    elif scenario == "study-3":
+        figures = viz_study_3(
             df,
             max_distortion=setting["max_distortion"],
             show_error=setting["show_error"],
