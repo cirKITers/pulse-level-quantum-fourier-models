@@ -268,9 +268,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
 
     # Plot data traces (one per variance level, shared color across circuits)
     color_it = iter(plotly.colors.sample_colorscale(design.seq_colors, len(variances)))
-    for variance in variances:
-        color = next(color_it)
-
+    for variance, color in zip(reversed(variances), reversed(list(color_it))):
         means = []
         stds = []
         for ansatz in ansatzes:
