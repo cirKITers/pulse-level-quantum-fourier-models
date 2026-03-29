@@ -24,8 +24,9 @@ scenarios = {
     #     "max_distortion": 0.01,
     #     "show_error": True,
     # },
-    "study-4": {
-        "experiment_name": "study-4-1",
+    "study-3": {
+        "experiment_name": "study-3-1",
+        "max_distortion": 0.01,
         "show_error": True,
     },
 }
