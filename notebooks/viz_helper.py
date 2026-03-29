@@ -109,6 +109,14 @@ def viz_study_2(df, max_distortion, show_error):
     return figures
 
 
+def viz_study_3(df, max_distortion, show_error):
+    figures = []
+
+    figures.append(expressibility_over_distortion(df, max_distortion, show_error))
+
+    return figures
+
+
 def viz_study_4(df, show_error):
     figures = []
 
@@ -311,9 +319,9 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
         )
 
     fig.update_layout(
-        title="Active Frequencies over PP Var.",
+        title="# of Frequencies over PP Var.",
         xaxis_title="Circuit",
-        yaxis_title="Number of Frequencies (|c| > 1e-10)",
+        yaxis_title="# of Frequencies (|c| > 1e-10)",
         template=design.template,
         font=dict(size=design.font_size),
         legend_indentation=-12,
@@ -683,6 +691,46 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
         title="Trace Distance over Pulse Parameter Variances",
         xaxis_title="Pulse Parameter Variances",
         yaxis_title="Trace Distance",
+        template=design.template,
+        font=dict(size=design.font_size),
+    )
+
+    return fig
+
+
+def expressibility_over_distortion(df: pd.DataFrame, max_distortion, show_error):
+    fig = go.Figure()
+
+    # Filter rows where pulse_params_variance is less than max_distortion
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
+
+    # Get unique circuit types
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
+    color_it = iter(design.prim_colors_lst)
+
+    # Create a trace for each circuit type
+    for ansatz in ansatzes:
+        # Filter data for this circuit type
+        circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
+
+        # average the fidelity over different seeds for a given distortion
+        grouped_df = circuit_df.groupby("pulse_params_variance")["expressibility"]
+        mean = grouped_df.mean()
+        std = grouped_df.std()
+
+        fig.add_scatter(
+            x=mean.index,
+            y=mean.values,
+            error_y=dict(type="data", array=std.values, visible=show_error),
+            mode="lines",
+            name=f"{circuit_name_to_str(ansatz)}",
+            line=dict(color=next(color_it), width=design.marker_line_width),
+        )
+
+    fig.update_layout(
+        title="Expr. over PP Variances",
+        xaxis_title="Pulse Parameter Variances",
+        yaxis_title="Expressibility",
         template=design.template,
         font=dict(size=design.font_size),
     )
