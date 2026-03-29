@@ -29,6 +29,10 @@ scenarios = {
         "max_distortion": 0.01,
         "show_error": True,
     },
+    "study-4": {
+        "experiment_name": "study-4-1",
+        "show_error": True,
+    },
 }
 
 for scenario, setting in scenarios.items():
