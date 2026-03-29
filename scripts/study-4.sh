@@ -3,7 +3,7 @@
 set -e
 
 # run experiments with all different circuits
-MAX_JOBS=10
+MAX_JOBS=20
 
 # Circuits without full spectrum
 # for circuit in Circuit_3 Circuit_9 Circuit_10 Circuit_16 Circuit_18 Circuit_7 Circuit_13 Hardware_Efficient 
