@@ -8,14 +8,12 @@ MAX_JOBS=20
 # Circuits without full spectrum
 # for circuit in Circuit_3 Circuit_9 Circuit_10 Circuit_16 Circuit_18 Circuit_7 Circuit_13 Hardware_Efficient 
 # Circuits with full spectrum
-for circuit in Circuit_2 Circuit_4 Circuit_8 Circuit_14 Circuit_15 Circuit_17 Circuit_19 Circuit_20 Strongly_Entangling
+# for circuit in Circuit_2 Circuit_4 Circuit_8 Circuit_14 Circuit_15 Circuit_17 Circuit_19 Circuit_20 Strongly_Entangling
 # All circuits
 for circuit in Circuit_2 Circuit_4 Circuit_8 Circuit_14 Circuit_15 Circuit_17 Circuit_19 Circuit_20 Strongly_Entangling Circuit_3 Circuit_9 Circuit_10 Circuit_16 Circuit_18 Circuit_7 Circuit_13 Hardware_Efficient 
 do
-    # unitary-only baseline vs. joint unitary+pulse training
     for train_pulse in False True
     do
-        # 1000 1001 1002 1003 1004 1005 1006 1007 1008 1009
         for seed in 1000 1001 1002 1003 1004 1005 1006 1007 1008 1009
         do
             # Wait if we already have MAX_JOBS running
