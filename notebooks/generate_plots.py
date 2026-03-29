@@ -13,11 +13,11 @@ cache = False
 # scenarios for plotting
 scenarios = {
     "study-1": {
-        "experiment_name": "study-1-2",
-        "max_distortion": 0.012,
-        "show_error": True,
+        "experiment_name": "study-1-10",
+        "max_distortion": 0.01,
+        "show_error": False,
         # "ignore_ansatzes": ["Circuit_10", "Circuit_3", "Circuit_18", "Circuit_7", "Circuit_9", "Circuit_16"]
-        "ignore_ansatzes": ["Circuit_13", "Circuit_17", "Circuit_8", "Hardware_Efficient"]
+        # "ignore_ansatzes": ["Circuit_13", "Circuit_17", "Circuit_8", "Hardware_Efficient"]
     },
     # "study-2": {
     #     "experiment_name": "study-2-3",
