@@ -12,27 +12,24 @@ cache = False
 
 # scenarios for plotting
 scenarios = {
-    "study-1": {
-        "experiment_name": "study-1-10",
-        "max_distortion": 0.01,
-        "show_error": False,
-        # "ignore_ansatzes": ["Circuit_10", "Circuit_3", "Circuit_18", "Circuit_7", "Circuit_9", "Circuit_16"]
-        # "ignore_ansatzes": ["Circuit_13", "Circuit_17", "Circuit_8", "Hardware_Efficient"]
-    },
+    # "study-1": {
+    #     "experiment_name": "study-1-10",
+    #     "show_error": False,
+    #     # "ignore_ansatzes": ["Circuit_10", "Circuit_3", "Circuit_18", "Circuit_7", "Circuit_9", "Circuit_16"]
+    #     # "ignore_ansatzes": ["Circuit_13", "Circuit_17", "Circuit_8", "Hardware_Efficient"]
+    # },
     # "study-2": {
     #     "experiment_name": "study-2-3",
-    #     "max_distortion": 0.01,
     #     "show_error": True,
     # },
     "study-3": {
-        "experiment_name": "study-3-1",
-        "max_distortion": 0.01,
+        "experiment_name": "study-3-0",
         "show_error": True,
     },
-    "study-4": {
-        "experiment_name": "study-4-1",
-        "show_error": True,
-    },
+    # "study-4": {
+    #     "experiment_name": "study-4-1",
+    #     "show_error": True,
+    # },
 }
 
 for scenario, setting in scenarios.items():
@@ -41,6 +38,7 @@ for scenario, setting in scenarios.items():
     print(f"{'-' * 100}")
 
     ignore_ansatzes = setting.get("ignore_ansatzes", [])
+    max_distortion = setting.get("max_distortion", 1.0)
 
     if not "experiment-id" in setting:
         print(
@@ -66,20 +64,20 @@ for scenario, setting in scenarios.items():
     if scenario == "study-1":
         figures = viz_study_1(
             df,
-            max_distortion=setting["max_distortion"],
+            max_distortion=max_distortion,
             show_error=setting["show_error"],
         )
 
     elif scenario == "study-2":
         figures = viz_study_2(
             df,
-            max_distortion=setting["max_distortion"],
+            max_distortion=max_distortion,
             show_error=setting["show_error"],
         )
     elif scenario == "study-3":
         figures = viz_study_3(
             df,
-            max_distortion=setting["max_distortion"],
+            max_distortion=max_distortion,
             show_error=setting["show_error"],
         )
     elif scenario == "study-4":
