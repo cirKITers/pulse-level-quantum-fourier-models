@@ -69,6 +69,7 @@ def create_expressibility_pipeline(**kwargs) -> Pipeline:
                     "params:expressibility.n_samples",
                     "params:expressibility.n_bins",
                     "params:expressibility.scale",
+                    "params:expressibility.sample_axis",
                     "params:expressibility.pulse_params_variance",
                 ],
                 outputs={
