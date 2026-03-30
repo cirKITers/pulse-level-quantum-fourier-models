@@ -192,6 +192,13 @@ def generate_df(run_ids: List[str]):
             df.loc[it, "pulse_params_variance"] = float(
                 run.data.params["fcc.pulse_params_variance"]
             )
+        
+        if "expressibility" in run.data.metrics:
+            df.loc[it, "expressibility"] = float(run.data.metrics["expressibility"])
+            df.loc[it, "expressibility.seed"] = int(run.data.params["expressibility.seed"])
+            df.loc[it, "pulse_params_variance"] = float(
+                run.data.params["expressibility.pulse_params_variance"]
+            )
 
         if "train_mse" in run.data.metrics:
             df.loc[it, "train_mse"] = run.data.metrics["train_mse"]
