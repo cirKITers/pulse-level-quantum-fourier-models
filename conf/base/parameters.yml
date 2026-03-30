@@ -55,5 +55,6 @@ expressibility:
   seed: 1000
   n_samples: 500
   n_bins: 50
+  sample_axis: ["unitary", "pulse"]
   pulse_params_variance: 1e-3
   scale: True

@@ -13,6 +13,8 @@ from qml_essentials.coefficients import Coefficients, FCC
 from qml_essentials.expressibility import Expressibility
 from qml_essentials.math import fidelity, trace_distance, phase_difference
 
+from scipy.linalg import sqrtm
+
 from pulse_level_qfms.utils import (
     Losses,
 )
@@ -216,6 +218,150 @@ class PulseFCC(FCC):
             mlflow.log_metric(f"coeff.var.f{freq}", var)
 
         return model.params, coeffs, freqs
+
+
+class PulseExpressibility(Expressibility):
+    """Override the expressibility sampling to support a ``sample_axis``
+    parameter, mirroring the approach used in :class:`PulseFCC`.
+
+    When ``sample_axis`` contains ``"unitary"`` the unitary parameters are
+    randomised across ``n_samples`` sets (original library behaviour).
+    When it contains ``"pulse"`` the pulse parameters are distorted with
+    a Gaussian scaler controlled by ``pulse_params_variance``.
+    Both may be active at the same time.
+    """
+
+    @staticmethod
+    def _sample_state_fidelities(
+        model: Model,
+        n_samples: int,
+        random_key: jax.random.PRNGKey,
+        sample_axis: List[str],
+        pulse_params_variance: float,
+        scale: bool = False,
+    ) -> jnp.ndarray:
+        """
+        Compute the state fidelities for pairs of random parameter sets,
+        with control over which axes (unitary / pulse) are sampled.
+
+        Args:
+            model (Model): The quantum model.
+            n_samples (int): Number of *pairs* of parameter sets.
+            random_key (jax.random.PRNGKey): JAX random key for parameter
+                initialization and pulse scaler generation.
+            sample_axis (List[str]): Subset of ``["unitary", "pulse"]``.
+            pulse_params_variance (float): Std-dev of the multiplicative
+                Gaussian noise applied to pulse parameters.
+            scale (bool): Whether to scale the number of samples.
+
+        Returns:
+            jnp.ndarray: Array of shape ``(n_samples,)`` with fidelities.
+        """
+        if scale:
+            total_samples = int(jnp.power(2, model.n_qubits) * n_samples)
+        else:
+            total_samples = n_samples
+
+        if "unitary" in sample_axis:
+            random_key = model.initialize_params(
+                random_key=random_key, repeat=total_samples * 2
+            )
+            log.info("Expressibility: sampling unitary parameters")
+        else:
+            random_key = model.initialize_params(random_key=random_key)
+            log.info("Expressibility: re-initializing unitary parameters")
+
+        scaler = None
+        gate_mode = "unitary"
+
+        if "pulse" in sample_axis:
+            gate_mode = "pulse"
+            if pulse_params_variance == 0.0:
+                log.info("Expressibility: using default pulse parameters")
+            else:
+                if "unitary" in sample_axis:
+                    # Both axes active: create a scaler that pairs 1:1 with
+                    # the already-batched unitary params.
+                    scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                        random_key,
+                        shape=(
+                            total_samples * 2,
+                            *model.pulse_params.shape[1:],
+                        ),
+                    )
+                    model.repeat_batch_axis = [True, True, False]
+                    log.info("Expressibility: sampling (unitary+pulse) parameters")
+                else:
+                    # Pulse only: unitary params are *not* batched (B_P=1).
+                    scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                        random_key,
+                        shape=(
+                            total_samples * 2,
+                            *model.pulse_params.shape[1:],
+                        ),
+                    )
+                    log.info("Expressibility: sampling pulse parameters only")
+
+        log.info(
+            f"Expressibility: using {total_samples} sample pairs "
+            f"(gate_mode={gate_mode})"
+        )
+
+        sv: jnp.ndarray = model(
+            params=model.params,
+            execution_type="density",
+            gate_mode=gate_mode,
+            pulse_params=scaler,
+        )
+
+        sqrt_sv1: jnp.ndarray = jnp.array([sqrtm(m) for m in sv[:total_samples]])
+        inner_fidelity = sqrt_sv1 @ sv[total_samples:] @ sqrt_sv1
+
+        fid: jnp.ndarray = (
+            jnp.trace(
+                jnp.array([sqrtm(m) for m in inner_fidelity]),
+                axis1=1,
+                axis2=2,
+            )
+            ** 2
+        )
+
+        return jnp.abs(fid)
+
+    @staticmethod
+    def state_fidelities(
+        n_samples: int,
+        n_bins: int,
+        model: Model,
+        random_key: jax.random.PRNGKey,
+        sample_axis: List[str],
+        pulse_params_variance: float,
+        scale: bool = False,
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """
+        Sample the state fidelities and histogram them.
+
+        Wraps :meth:`_sample_state_fidelities` with histogram binning,
+        identical to the base class but routed through our override.
+        """
+        if scale:
+            n_samples = int(jnp.power(2, model.n_qubits) * n_samples)
+            n_bins = model.n_qubits * n_bins
+
+        fidelities = PulseExpressibility._sample_state_fidelities(
+            model=model,
+            n_samples=n_samples,
+            random_key=random_key,
+            sample_axis=sample_axis,
+            pulse_params_variance=pulse_params_variance,
+            scale=False,  # already applied above
+        )
+
+        y: jnp.ndarray = jnp.linspace(0, 1, n_bins + 1)
+        z, _ = jnp.histogram(fidelities, bins=y)
+        z = z / n_samples
+
+        return y, z
 
 
 def calculate_fcc(
@@ -477,41 +623,27 @@ def evaluate_expressibility(
     n_samples: int,
     n_bins: int,
     scale: bool,
+    sample_axis: List[str],
     pulse_params_variance: float,
 ):
     log.info(f"Seed for expressibility: {seed}")
-
-    if scale:
-        total_samples = int(jnp.power(2, model.n_qubits) * n_samples)
-    else:
-        total_samples = n_samples
-
-    log.info(f"Using {total_samples} samples for expressibility")
+    log.info(
+        f"Sample axis: {sample_axis}, pulse_params_variance: {pulse_params_variance}"
+    )
 
     random_key = jax.random.PRNGKey(seed)
 
-    scaler = 1.0 + pulse_params_variance * jax.random.normal(
-        random_key,
-        shape=(
-            total_samples * 2,  # will get duplicated in _sample_state_fidelities
-            *model.pulse_params.shape[1:],
-        ),
-    )
-    # same logic as for fcc; we only want to batch for inputs and params
-    # but leave the pulse params as is
-    model.repeat_batch_axis = [True, True, False]
-
-    bins, dist_circuit = Expressibility.state_fidelities(
-        seed=seed,
-        n_samples=total_samples,
+    _, dist_circuit = PulseExpressibility.state_fidelities(
+        n_samples=n_samples,
         n_bins=n_bins,
-        scale=False,
+        scale=scale,
         model=model,
-        pulse_params=scaler,
-        gate_mode="pulse",
+        random_key=random_key,
+        sample_axis=sample_axis,
+        pulse_params_variance=pulse_params_variance,
     )
 
-    bins, dist_haar = Expressibility.haar_integral(
+    _, dist_haar = Expressibility.haar_integral(
         n_qubits=model.n_qubits,
         n_bins=n_bins,
         cache=True,
@@ -520,7 +652,6 @@ def evaluate_expressibility(
     kl_dist = Expressibility.kullback_leibler_divergence(dist_circuit, dist_haar)
     expressibility = jnp.mean(kl_dist)
 
-    # average over all samples
     mlflow.log_metric("expressibility", expressibility)
 
     return {
