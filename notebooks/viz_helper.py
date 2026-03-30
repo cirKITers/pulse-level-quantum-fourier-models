@@ -707,7 +707,7 @@ def expressibility_over_distortion(df: pd.DataFrame, max_distortion, show_error)
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:len(design.prim_colors_lst)]:
         # Filter data for this circuit type
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
@@ -732,6 +732,8 @@ def expressibility_over_distortion(df: pd.DataFrame, max_distortion, show_error)
         template=design.template,
         font=dict(size=design.font_size),
     )
+
+    fig.update_yaxes(type="log")
 
     return fig
 
