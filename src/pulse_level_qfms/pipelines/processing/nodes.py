@@ -235,7 +235,7 @@ class PulseExpressibility(Expressibility):
     def _sample_state_fidelities(
         model: Model,
         n_samples: int,
-        seed: int,
+        random_key: jax.random.PRNGKey,
         sample_axis: List[str],
         pulse_params_variance: float,
         scale: bool = False,
@@ -247,7 +247,8 @@ class PulseExpressibility(Expressibility):
         Args:
             model (Model): The quantum model.
             n_samples (int): Number of *pairs* of parameter sets.
-            seed (int): Random number generator seed.
+            random_key (jax.random.PRNGKey): JAX random key for parameter
+                initialization and pulse scaler generation.
             sample_axis (List[str]): Subset of ``["unitary", "pulse"]``.
             pulse_params_variance (float): Std-dev of the multiplicative
                 Gaussian noise applied to pulse parameters.
@@ -260,8 +261,6 @@ class PulseExpressibility(Expressibility):
             total_samples = int(jnp.power(2, model.n_qubits) * n_samples)
         else:
             total_samples = n_samples
-
-        random_key = jax.random.PRNGKey(seed)
 
         if "unitary" in sample_axis:
             random_key = model.initialize_params(
@@ -331,10 +330,10 @@ class PulseExpressibility(Expressibility):
 
     @staticmethod
     def state_fidelities(
-        seed: int,
         n_samples: int,
         n_bins: int,
         model: Model,
+        random_key: jax.random.PRNGKey,
         sample_axis: List[str],
         pulse_params_variance: float,
         scale: bool = False,
@@ -352,7 +351,7 @@ class PulseExpressibility(Expressibility):
         fidelities = PulseExpressibility._sample_state_fidelities(
             model=model,
             n_samples=n_samples,
-            seed=seed,
+            random_key=random_key,
             sample_axis=sample_axis,
             pulse_params_variance=pulse_params_variance,
             scale=False,  # already applied above
@@ -632,12 +631,14 @@ def evaluate_expressibility(
         f"Sample axis: {sample_axis}, pulse_params_variance: {pulse_params_variance}"
     )
 
+    random_key = jax.random.PRNGKey(seed)
+
     _, dist_circuit = PulseExpressibility.state_fidelities(
-        seed=seed,
         n_samples=n_samples,
         n_bins=n_bins,
         scale=scale,
         model=model,
+        random_key=random_key,
         sample_axis=sample_axis,
         pulse_params_variance=pulse_params_variance,
     )
