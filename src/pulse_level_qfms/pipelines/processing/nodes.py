@@ -647,6 +647,7 @@ def evaluate_expressibility(
         n_qubits=model.n_qubits,
         n_bins=n_bins,
         cache=True,
+        scale=scale,
     )
 
     kl_dist = Expressibility.kullback_leibler_divergence(dist_circuit, dist_haar)
