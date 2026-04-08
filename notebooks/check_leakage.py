@@ -12,7 +12,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 numerical_cap = 1e-10
-n_samples = 500
+n_samples = 100
 seed = 1000
 scale = True
 pulse_params_variance = 0.001
@@ -70,26 +70,30 @@ for circuit_type in ansatzes:
 
     no_coeffs[circuit_type] = np.array(coeffs).flatten()
 
-    break
+    # --- Spectrum per circuit ---
+    coeff_magnitudes = np.abs(np.array(coeffs))  # shape: (n_freqs, n_samples)
+    mean_magnitudes = coeff_magnitudes.mean(axis=1)
+    std_magnitudes = coeff_magnitudes.std(axis=1)
+    freq_array = np.array(freqs)
 
-# --- Histogram ---
-fig, ax = plt.subplots(figsize=(10, 6))
-for circuit_type, coeff_vals in no_coeffs.items():
-    ax.hist(
-        np.abs(coeff_vals),
-        bins=50,
-        alpha=0.5,
-        label=circuit_type,
-        density=True,
+    # positive half only
+    pos_mask = freq_array >= 0
+    freq_array = freq_array[pos_mask]
+    mean_magnitudes = mean_magnitudes[pos_mask]
+    std_magnitudes = std_magnitudes[pos_mask]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(freq_array, mean_magnitudes, width=0.4, yerr=std_magnitudes, capsize=4)
+    ax.set_yscale("log")
+    ax.set_xlabel("Frequency")
+    ax.set_ylabel("Mean |c| (log scale)")
+    ax.set_title(f"Spectrum - {circuit_type.__name__}")
+    ax.set_xticks(freq_array)
+    plt.tight_layout()
+    output_path = os.path.join(
+        os.path.dirname(__file__),
+        f"spectrum_{circuit_type.__name__}.png",
     )
-
-ax.set_xlabel("Coefficient magnitude |c|")
-ax.set_ylabel("Density")
-ax.set_title("Histogram of Fourier coefficients (pulse-level)")
-ax.legend(fontsize="small", ncol=2)
-plt.tight_layout()
-
-output_path = os.path.join(os.path.dirname(__file__), "check_leakage_histogram.png")
-plt.savefig(output_path, dpi=150)
-plt.close()
-print(f"Histogram saved to {output_path}")
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+    print(f"Spectrum saved to {output_path}")
