@@ -758,7 +758,7 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
     color_it = iter(design.prim_colors_lst)
-    for train_pulse, label in [(False, "Unitary"), (True, "+ Pulse")]:
+    for train_pulse, label in [(False, "Gate"), (True, "+ Pulse")]:
         color = next(color_it)
 
         means = []
@@ -777,7 +777,7 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
         )
 
     fig.update_layout(
-        title="MSE: Unitary vs. Unitary + Pulse",
+        title="MSE: Gate vs. Gate + Pulse",
         xaxis_title="Circuit",
         yaxis_title="MSE",
         barmode="group",
