@@ -16,7 +16,7 @@ n_samples = 100
 seed = 1000
 scale = True
 pulse_params_variance = 0.001
-mts = 2
+mts = 4
 
 ansatzes = Ansaetze.get_available(parameterized_only=True)
 
