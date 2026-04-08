@@ -15,7 +15,7 @@ numerical_cap = 1e-10
 n_samples = 100
 seed = 1000
 scale = True
-pulse_params_variance = 0.001
+pulse_params_variance = 0.0001
 mts = 4
 
 ansatzes = Ansaetze.get_available(parameterized_only=True)
@@ -89,7 +89,7 @@ for circuit_type in ansatzes:
     ax.set_ylabel("Mean |c| (log scale)")
     ax.set_title(f"Spectrum - {circuit_type.__name__}")
     ax.set_xticks(freq_array)
-    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{int(x)}"))
+    ax.set_xticklabels([str(int(f)) if f == int(f) else "" for f in freq_array])
     plt.tight_layout()
     output_path = os.path.join(
         os.path.dirname(__file__),
