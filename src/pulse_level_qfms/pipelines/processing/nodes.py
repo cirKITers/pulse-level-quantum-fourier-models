@@ -574,7 +574,7 @@ def evaluate_fidelity(
     log.info(f"Seed for fidelity check: {seed}")
 
     if scale:
-        total_samples = int(np.power(2, model.n_qubits) * n_samples)
+        total_samples = int(jnp.power(2, model.n_qubits) * n_samples)
     else:
         total_samples = n_samples
 
@@ -589,8 +589,8 @@ def evaluate_fidelity(
     scaler = 1.0 + pulse_params_variance * jax.random.normal(
         random_key,
         shape=(
-            *model.pulse_params.shape[:-1],
             total_samples,
+            *model.pulse_params.shape[1:],
         ),
     )
     # disable repeat for pulse parameters
@@ -608,9 +608,9 @@ def evaluate_fidelity(
     td = trace_distance(unitary_states, pulse_states)
 
     # average over all samples
-    mlflow.log_metric("fidelity", np.mean(fi))
-    # mlflow.log_metric("phase", np.mean(ph))
-    mlflow.log_metric("trace-distance", np.mean(td))
+    mlflow.log_metric("fidelity", jnp.mean(fi))
+    # mlflow.log_metric("phase", jnp.mean(ph))
+    mlflow.log_metric("trace-distance", jnp.mean(td))
 
     return {
         "fidelity": fidelity,
