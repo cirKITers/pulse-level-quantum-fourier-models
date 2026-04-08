@@ -83,12 +83,13 @@ for circuit_type in ansatzes:
     std_magnitudes = std_magnitudes[pos_mask]
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.bar(freq_array, mean_magnitudes, width=0.4, yerr=std_magnitudes, capsize=4)
+    ax.bar(freq_array, mean_magnitudes, width=0.2, yerr=std_magnitudes, capsize=4)
     ax.set_yscale("log")
     ax.set_xlabel("Frequency")
     ax.set_ylabel("Mean |c| (log scale)")
     ax.set_title(f"Spectrum - {circuit_type.__name__}")
     ax.set_xticks(freq_array)
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{int(x)}"))
     plt.tight_layout()
     output_path = os.path.join(
         os.path.dirname(__file__),
