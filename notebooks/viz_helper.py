@@ -104,7 +104,6 @@ def viz_study_2(df, max_distortion, show_error):
 
     figures.append(fidelity_over_distortion(df, max_distortion, show_error))
     figures.append(trace_distance_over_distortion(df, max_distortion, show_error))
-    figures.append(frequency_histogram_by_distortion(df, max_distortion, show_error))
 
     return figures
 
@@ -266,9 +265,14 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
     variances = sorted(filtered_df["pulse_params_variance"].unique())
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
+    # Build a normalized color value in [0, 1] for each variance level
+    var_min = variances[0]
+    var_max = variances[-1]
+
+    colors = plotly.colors.sample_colorscale(design.seq_colors, len(variances))
+
     # Plot data traces (one per variance level, shared color across circuits)
-    color_it = iter(plotly.colors.sample_colorscale(design.seq_colors, len(variances)))
-    for variance, color in zip(reversed(variances), reversed(list(color_it))):
+    for variance, color in zip(reversed(variances), reversed(colors)):
         means = []
         stds = []
         for ansatz in ansatzes:
@@ -294,27 +298,25 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
             ),
         )
 
-    # Legend: only first and last variance levels (same pattern as coeff_var)
-    color_it = iter(plotly.colors.sample_colorscale(design.seq_colors, len(variances)))
-    for it, variance in enumerate(variances):
-        color = next(color_it)
-
-        if it > 0 and it < len(variances) - 1:
-            continue
-        fig.add_scatter(
-            x=[None],
-            y=[None],
-            mode="markers",
-            name=f"σ²={variance}",
-            legendgroup="variance",
-            showlegend=True,
-            marker=dict(
-                size=design.marker_size,
-                line=dict(width=design.marker_line_width),
-                symbol="circle",
-                color=color,
+    # Add an invisible scatter trace solely to render the colorbar
+    fig.add_scatter(
+        x=[None],
+        y=[None],
+        mode="markers",
+        showlegend=False,
+        marker=dict(
+            size=0,
+            color=[var_min, var_max],
+            colorscale=design.seq_colors,
+            showscale=True,
+            colorbar=dict(
+                title=dict(text="σ²", side="right"),
+                thickness=15,
+                tickvals=[var_min, var_max],
+                ticktext=[str(var_min), str(var_max)],
             ),
-        )
+        ),
+    )
 
     fig.update_layout(
         title="# of Frequencies over PP Var.",
@@ -709,7 +711,7 @@ def expressibility_over_distortion(df: pd.DataFrame, max_distortion, show_error)
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
-    for ansatz in ansatzes[:len(design.prim_colors_lst)]:
+    for ansatz in ansatzes[: len(design.prim_colors_lst)]:
         # Filter data for this circuit type
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 

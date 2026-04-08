@@ -24,7 +24,7 @@ do
             echo "--- $circuit Ansatz, Variance $variance, Seed $seed ---"
             uv run kedro run --pipeline "study-1" --params="fcc.seed=$seed,fcc.pulse_params_variance=$variance,model.circuit_type=$circuit" &
 
-            sleep 30
+            sleep 20
         done
     done
 done

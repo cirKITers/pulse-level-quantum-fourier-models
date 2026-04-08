@@ -24,7 +24,7 @@ do
             echo "--- $circuit Ansatz, Train Pulse=$train_pulse, Seed $seed ---"
             uv run kedro run --pipeline "study-4" --params="data.seed=$seed,model.circuit_type=$circuit,train.train_pulse=$train_pulse" &
 
-            sleep 30
+            sleep 20
         done
     done
 done
