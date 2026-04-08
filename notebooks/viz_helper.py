@@ -591,6 +591,8 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             line=dict(color=next(color_it)),
         )
 
+    fig.update_yaxes(type="log")
+
     fig.update_layout(
         title="FCC over PP Variances",
         xaxis_title="Pulse Parameter Variances",
