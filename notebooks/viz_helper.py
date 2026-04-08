@@ -754,7 +754,10 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
     """
     fig = go.Figure()
 
-    ansatzes = sort_ansatzes(df["ansatz"].unique())
+    ansatzes = sorted(
+        df["ansatz"].unique(),
+        key=lambda a: df.loc[df["ansatz"] == a, "model.n_pulse_params"].iloc[0],
+    )
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
     color_it = iter(design.prim_colors_lst)

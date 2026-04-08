@@ -167,6 +167,7 @@ def generate_df(run_ids: List[str]):
             df.loc[it, "data.seed"] = int(run.data.params["data.seed"])
 
         df.loc[it, "model.seed"] = int(run.data.params["model.seed"])
+        df.loc[it, "model.n_pulse_params"] = int(run.data.params["n_pulse_params"])
 
         frequencies = sorted(
             [
@@ -192,10 +193,12 @@ def generate_df(run_ids: List[str]):
             df.loc[it, "pulse_params_variance"] = float(
                 run.data.params["fcc.pulse_params_variance"]
             )
-        
+
         if "expressibility" in run.data.metrics:
             df.loc[it, "expressibility"] = float(run.data.metrics["expressibility"])
-            df.loc[it, "expressibility.seed"] = int(run.data.params["expressibility.seed"])
+            df.loc[it, "expressibility.seed"] = int(
+                run.data.params["expressibility.seed"]
+            )
             df.loc[it, "pulse_params_variance"] = float(
                 run.data.params["expressibility.pulse_params_variance"]
             )
