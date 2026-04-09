@@ -620,7 +620,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:10]: #TODO: just ignore some circuits which are redundant
         # Filter data for this circuit type
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
@@ -667,7 +667,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:10]: #TODO: just ignore some circuits which are redundant
         # Filter data for this circuit type
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
