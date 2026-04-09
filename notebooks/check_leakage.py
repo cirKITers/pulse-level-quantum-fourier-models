@@ -12,10 +12,10 @@ jax.config.update("jax_enable_x64", True)
 
 
 numerical_cap = 1e-10
-n_samples = 100
+n_samples = 200
 seed = 1000
 scale = True
-pulse_params_variance = 0.0001
+pulse_params_variance = 0.01
 mts = 4
 
 ansatzes = Ansaetze.get_available(parameterized_only=True)
@@ -58,7 +58,8 @@ for circuit_type in ansatzes:
     # disable repeat for pulse parameters (to not further extend batch axis)
     model.repeat_batch_axis = [True, True, False]
 
-    coeffs, freqs = Coefficients.get_spectrum(
+    # --- Pulse mode ---
+    coeffs_pulse, freqs_pulse = Coefficients.get_spectrum(
         model,
         shift=True,
         trim=True,
@@ -68,28 +69,65 @@ for circuit_type in ansatzes:
         **kwargs,
     )
 
-    no_coeffs[circuit_type] = np.array(coeffs).flatten()
+    no_coeffs[circuit_type] = np.array(coeffs_pulse).flatten()
+
+    # --- Unitary mode ---
+    coeffs_unitary, freqs_unitary = Coefficients.get_spectrum(
+        model,
+        shift=True,
+        trim=True,
+        gate_mode="unitary",
+        pulse_params=None,
+        mts=mts,
+        **kwargs,
+    )
 
     # --- Spectrum per circuit ---
-    coeff_magnitudes = np.abs(np.array(coeffs))  # shape: (n_freqs, n_samples)
-    mean_magnitudes = coeff_magnitudes.mean(axis=1)
-    std_magnitudes = coeff_magnitudes.std(axis=1)
-    freq_array = np.array(freqs)
+    freq_array = np.array(freqs_pulse)
+
+    pulse_magnitudes = np.abs(np.array(coeffs_pulse))
+    pulse_mean = pulse_magnitudes.mean(axis=1)
+    pulse_std = pulse_magnitudes.std(axis=1)
+
+    unitary_magnitudes = np.abs(np.array(coeffs_unitary))
+    unitary_mean = unitary_magnitudes.mean(axis=1)
+    unitary_std = unitary_magnitudes.std(axis=1)
 
     # positive half only
     pos_mask = freq_array >= 0
     freq_array = freq_array[pos_mask]
-    mean_magnitudes = mean_magnitudes[pos_mask]
-    std_magnitudes = std_magnitudes[pos_mask]
+    pulse_mean = pulse_mean[pos_mask]
+    pulse_std = pulse_std[pos_mask]
+    unitary_mean = unitary_mean[pos_mask]
+    unitary_std = unitary_std[pos_mask]
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.bar(freq_array, mean_magnitudes, width=0.2, yerr=std_magnitudes, capsize=4)
+    bar_width = 0.15
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(
+        freq_array - bar_width / 2,
+        unitary_mean,
+        width=bar_width,
+        yerr=unitary_std,
+        capsize=4,
+        label="Unitary",
+        color="#4C72B0",
+    )
+    ax.bar(
+        freq_array + bar_width / 2,
+        pulse_mean,
+        width=bar_width,
+        yerr=pulse_std,
+        capsize=4,
+        label="Pulse",
+        color="#DD8452",
+    )
     ax.set_yscale("log")
     ax.set_xlabel("Frequency")
     ax.set_ylabel("Mean |c| (log scale)")
     ax.set_title(f"Spectrum - {circuit_type.__name__}")
     ax.set_xticks(freq_array)
     ax.set_xticklabels([str(int(f)) if f == int(f) else "" for f in freq_array])
+    ax.legend()
     plt.tight_layout()
     output_path = os.path.join(
         os.path.dirname(__file__),
