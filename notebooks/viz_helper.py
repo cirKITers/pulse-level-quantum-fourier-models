@@ -120,6 +120,7 @@ def viz_study_4(df, show_error):
     figures = []
 
     figures.append(pulse_param_mse_comparison(df, show_error))
+    figures.extend(pulse_mean_and_variance_over_step(df, show_error))
 
     return figures
 
@@ -620,7 +621,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
-    for ansatz in ansatzes[:10]: #TODO: just ignore some circuits which are redundant
+    for ansatz in ansatzes[:10]:  # TODO: just ignore some circuits which are redundant
         # Filter data for this circuit type
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
@@ -669,7 +670,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
-    for ansatz in ansatzes[:10]: #TODO: just ignore some circuits which are redundant
+    for ansatz in ansatzes[:10]:  # TODO: just ignore some circuits which are redundant
         # Filter data for this circuit type
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
@@ -793,3 +794,89 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
     )
 
     return fig
+
+
+def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True):
+    """
+    Visualize how pulse_scaler_mean and pulse_scaler_std evolve over training
+    steps.  For each ansatz the per-step metric history is fetched from MLflow,
+    averaged over seeds, and plotted with optional error bars.
+
+    Args:
+        df (pd.DataFrame): DataFrame with columns "run_id", "ansatz", and
+            "train_pulse".  Only rows where train_pulse is True are considered.
+        show_error (bool): Whether to display error bars (std over seeds).
+
+    Returns:
+        tuple[go.Figure, go.Figure]: Two figures – one for pulse_scaler_mean
+            and one for pulse_scaler_std over training steps.
+    """
+    import mlflow
+
+    # Only consider runs that actually trained pulse parameters
+    filtered_df = df[df["train_pulse"] == True]  # noqa: E712
+
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
+    client = mlflow.tracking.MlflowClient()
+
+    # --- helper: collect per-step metric history for all runs of an ansatz ---
+    def _collect_metric_history(ansatz_df, metric_name):
+        """Return a DataFrame with columns 'step' and one column per run."""
+        histories = {}
+        for run_id in ansatz_df["run_id"].values:
+            history = client.get_metric_history(run_id, metric_name)
+            if history:
+                histories[run_id] = {m.step: m.value for m in history}
+        if not histories:
+            return pd.DataFrame()
+        hist_df = pd.DataFrame(histories)
+        hist_df.index.name = "step"
+        hist_df = hist_df.sort_index()
+        return hist_df
+
+    # --- build figures ---
+    figures = []
+    for metric_name, y_label, title in [
+        ("pulse_scaler_mean", "Pulse Scaler Mean", "Pulse Scaler Mean over Step"),
+        ("pulse_scaler_std", "Pulse Scaler Std", "Pulse Scaler Std over Step"),
+    ]:
+        fig = go.Figure()
+        color_it = iter(design.prim_colors_lst)
+
+        for ansatz in ansatzes:
+            ansatz_df = filtered_df[filtered_df["ansatz"] == ansatz]
+            hist_df = _collect_metric_history(ansatz_df, metric_name)
+
+            if hist_df.empty:
+                continue
+
+            steps = hist_df.index.values
+            mean_vals = hist_df.mean(axis=1).values
+            std_vals = hist_df.std(axis=1).values
+
+            color = next(color_it)
+
+            fig.add_scatter(
+                x=steps,
+                y=mean_vals,
+                error_y=dict(type="data", array=std_vals, visible=show_error),
+                mode="lines+markers",
+                name=circuit_name_to_str(ansatz),
+                line=dict(color=color, width=design.marker_line_width),
+                marker=dict(
+                    size=design.marker_size,
+                    line=dict(width=design.marker_line_width),
+                ),
+            )
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="Step",
+            yaxis_title=y_label,
+            template=design.template,
+            font=dict(size=design.font_size),
+        )
+
+        figures.append(fig)
+
+    return figures

@@ -211,6 +211,8 @@ def generate_df(run_ids: List[str]):
             df.loc[it, "train_pulse"] = (
                 run.data.params["train.train_pulse"].lower() == "true"
             )
+            df.loc[it, "pulse_scaler_mean"] = run.data.metrics["pulse_scaler_mean"]
+            df.loc[it, "pulse_scaler_std"] = run.data.metrics["pulse_scaler_std"]
 
         if "fidelity" in run.data.metrics:
             df.loc[it, "fidelity"] = float(run.data.metrics["fidelity"])
