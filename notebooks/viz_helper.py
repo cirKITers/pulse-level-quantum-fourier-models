@@ -646,6 +646,8 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         font=dict(size=design.font_size),
     )
 
+    fig.update_yaxes(type="log")
+
     return fig
 
 
@@ -692,6 +694,8 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
         template=design.template,
         font=dict(size=design.font_size),
     )
+
+    fig.update_yaxes(type="log")
 
     return fig
 
