@@ -819,7 +819,6 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
     ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
     client = mlflow.tracking.MlflowClient()
 
-    # --- helper: collect per-step metric history for all runs of an ansatz ---
     def _collect_metric_history(ansatz_df, metric_name):
         """Return a DataFrame with columns 'step' and one column per run."""
         histories = {}
@@ -834,7 +833,6 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
         hist_df = hist_df.sort_index()
         return hist_df
 
-    # --- build figures ---
     figures = []
     for metric_name, y_label, title in [
         ("pulse_scaler_mean", "Pulse Scaler Mean", "Pulse Scaler Mean over Step"),
@@ -843,7 +841,7 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
         fig = go.Figure()
         color_it = iter(design.prim_colors_lst)
 
-        for ansatz in ansatzes:
+        for ansatz in ansatzes[:10]:
             ansatz_df = filtered_df[filtered_df["ansatz"] == ansatz]
             hist_df = _collect_metric_history(ansatz_df, metric_name)
 
