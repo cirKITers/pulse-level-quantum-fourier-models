@@ -120,7 +120,8 @@ def viz_study_4(df, show_error):
     figures = []
 
     figures.append(pulse_param_mse_comparison(df, show_error))
-    figures.extend(pulse_mean_and_variance_over_step(df, show_error))
+    figures.append(pulse_mean_and_variance_over_step(df, show_error))
+    figures.append(pulse_mean_and_variance_over_step(df, show_error))
 
     return figures
 
