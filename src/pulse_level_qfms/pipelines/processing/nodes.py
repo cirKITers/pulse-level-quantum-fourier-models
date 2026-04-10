@@ -160,14 +160,15 @@ class PulseFCC(FCC):
                                 ],  # starting from batch dimension
                             ),
                         )
+                        degree = jnp.prod(jnp.array(model.degree))
                         # but repeat over the input dimension
                         # Note, that the following steps are identical to what happens in
                         # _assimilate_batch
                         # [B_I, 1, B_R, ...]
-                        scaler = scaler.repeat(jnp.prod(model.degree), axis=0)
+                        scaler = scaler.repeat(degree, axis=0)
                         # [..., B]
                         scaler = scaler.reshape(
-                            jnp.prod(model.degree) * total_samples,
+                            degree * total_samples,
                             *model.pulse_params.shape[1:],
                         )
                         # disable repeat for pulse parameters (to not further extend batch axis)
