@@ -142,14 +142,12 @@ def generate_df(run_ids: List[str]):
     Returns:
         tuple: A tuple containing the generated dataframe and the list of unfinished runs.
     """
-    df = pd.DataFrame()
+    client = mlflow.tracking.MlflowClient()
 
+    rows = []
     unfinished_runs = []
-    for it, run_id in track(
-        enumerate(run_ids), description="Collecting data...", total=len(run_ids)
-    ):
+    for run_id in track(run_ids, description="Collecting data..."):
         # obtain run from mlflow api
-        client = mlflow.tracking.MlflowClient()
         run = client.get_run(run_id)
 
         # check if run is finished
@@ -158,17 +156,17 @@ def generate_df(run_ids: List[str]):
             unfinished_runs.append(run_id)
             continue
 
-        # set run_id
-        df.loc[it, "run_id"] = run_id
+        row = {
+            "run_id": run_id,
+            # get all relevant parameters
+            "ansatz": run.data.params["model.circuit_type"],
+            "model.seed": int(run.data.params["model.seed"]),
+        }
 
-        # get all relevant paramters
-        df.loc[it, "ansatz"] = run.data.params["model.circuit_type"]
         if "data.seed" in run.data.params:
-            df.loc[it, "data.seed"] = int(run.data.params["data.seed"])
-
-        df.loc[it, "model.seed"] = int(run.data.params["model.seed"])
+            row["data.seed"] = int(run.data.params["data.seed"])
         if "model.n_pulse_params" in run.data.params:
-            df.loc[it, "model.n_pulse_params"] = int(run.data.params["n_pulse_params"])
+            row["model.n_pulse_params"] = int(run.data.params["model.n_pulse_params"])
 
         frequencies = sorted(
             [
@@ -180,49 +178,46 @@ def generate_df(run_ids: List[str]):
 
         for f in frequencies:
             if f >= 0:
-                df.loc[it, f"coeff.var.f{f}"] = float(
-                    run.data.metrics[f"coeff.var.f{f}"]
-                )
-                df.loc[it, f"coeff.mean.f{f}"] = float(
-                    run.data.metrics[f"coeff.mean.f{f}"]
-                )
+                row[f"coeff.var.f{f}"] = float(run.data.metrics[f"coeff.var.f{f}"])
+                row[f"coeff.mean.f{f}"] = float(run.data.metrics[f"coeff.mean.f{f}"])
 
         # get metrics
         if "fcc" in run.data.metrics:
-            df.loc[it, "fcc"] = float(run.data.metrics["fcc"])
-            df.loc[it, "fcc.seed"] = int(run.data.params["fcc.seed"])
-            df.loc[it, "pulse_params_variance"] = float(
+            row["fcc"] = float(run.data.metrics["fcc"])
+            row["fcc.seed"] = int(run.data.params["fcc.seed"])
+            row["pulse_params_variance"] = float(
                 run.data.params["fcc.pulse_params_variance"]
             )
 
         if "expressibility" in run.data.metrics:
-            df.loc[it, "expressibility"] = float(run.data.metrics["expressibility"])
-            df.loc[it, "expressibility.seed"] = int(
-                run.data.params["expressibility.seed"]
-            )
-            df.loc[it, "pulse_params_variance"] = float(
+            row["expressibility"] = float(run.data.metrics["expressibility"])
+            row["expressibility.seed"] = int(run.data.params["expressibility.seed"])
+            row["pulse_params_variance"] = float(
                 run.data.params["expressibility.pulse_params_variance"]
             )
 
         if "train_mse" in run.data.metrics:
-            df.loc[it, "train_mse"] = run.data.metrics["train_mse"]
+            row["train_mse"] = run.data.metrics["train_mse"]
 
         if "train.train_pulse" in run.data.params:
             if run.data.params["train.train_pulse"].lower() == "true":
-                df.loc[it, "train_pulse"] = True
-                df.loc[it, "pulse_scaler_mean"] = run.data.metrics["pulse_scaler_mean"]
-                df.loc[it, "pulse_scaler_std"] = run.data.metrics["pulse_scaler_std"]
+                row["train_pulse"] = True
+                row["pulse_scaler_mean"] = run.data.metrics["pulse_scaler_mean"]
+                row["pulse_scaler_std"] = run.data.metrics["pulse_scaler_std"]
             else:
-                df.loc[it, "train_pulse"] = True
+                row["train_pulse"] = True
 
         if "fidelity" in run.data.metrics:
-            df.loc[it, "fidelity"] = float(run.data.metrics["fidelity"])
-            df.loc[it, "fidelity.seed"] = int(run.data.params["fidelity.seed"])
-            df.loc[it, "pulse_params_variance"] = float(
+            row["fidelity"] = float(run.data.metrics["fidelity"])
+            row["fidelity.seed"] = int(run.data.params["fidelity.seed"])
+            row["pulse_params_variance"] = float(
                 run.data.params["fidelity.pulse_params_variance"]
             )
 
         if "trace-distance" in run.data.metrics:
-            df.loc[it, "trace-distance"] = float(run.data.metrics["trace-distance"])
+            row["trace-distance"] = float(run.data.metrics["trace-distance"])
 
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
     return df
