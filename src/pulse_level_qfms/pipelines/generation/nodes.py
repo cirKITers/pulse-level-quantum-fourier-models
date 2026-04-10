@@ -48,8 +48,8 @@ def generate_model(
     log.debug(f"Created quantum model with {model.params.size} trainable parameters.")
     mlflow.log_text(str(model), "model.txt")
 
-    num_pulse_params = model.pulse_params.size
-    mlflow.log_param("model.n_pulse_params", num_pulse_params)
+    mlflow.log_param("model.n_pulse_params", model.pulse_params.size)
+    mlflow.log_metric("model.n_gate_params", model.params.size)
 
     return {"model": model}
 

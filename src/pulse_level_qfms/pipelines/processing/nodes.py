@@ -378,10 +378,6 @@ def calculate_fcc(
 ):
     log.info(f"Seed for FCC: {seed}")
 
-    # log before we do any batching
-    mlflow.log_metric("n_pulse_params", model.pulse_params.size)
-    mlflow.log_metric("n_gate_params", model.params.size)
-
     # call our modified class to calculate the fourier fingerprint
     fourier_fingerprint, _ = PulseFCC.get_fourier_fingerprint(
         model,
