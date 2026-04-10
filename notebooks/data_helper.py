@@ -205,7 +205,7 @@ def generate_df(run_ids: List[str]):
                 row["pulse_scaler_mean"] = run.data.metrics["pulse_scaler_mean"]
                 row["pulse_scaler_std"] = run.data.metrics["pulse_scaler_std"]
             else:
-                row["train_pulse"] = True
+                row["train_pulse"] = False
 
         if "fidelity" in run.data.metrics:
             row["fidelity"] = float(run.data.metrics["fidelity"])
