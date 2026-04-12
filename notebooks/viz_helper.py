@@ -121,6 +121,7 @@ def viz_study_4(df, show_error):
 
     figures.append(pulse_param_mse_comparison(df, show_error))
     figures.extend(pulse_mean_and_variance_over_step(df, show_error))
+    figures.append(loss_over_step(df, show_error))
 
     return figures
 
@@ -857,14 +858,18 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
             fig.add_scatter(
                 x=steps,
                 y=mean_vals,
-                error_y=dict(type="data", array=std_vals, visible=show_error),
+                error_y=dict(
+                    type="data", array=std_vals, visible=show_error, thickness=1
+                ),
                 mode="lines+markers",
                 name=circuit_name_to_str(ansatz),
-                line=dict(color=color, width=design.marker_line_width),
+                line=dict(color=color, width=1.5),
                 marker=dict(
-                    size=design.marker_size,
-                    line=dict(width=design.marker_line_width),
+                    size=6,
+                    line=dict(width=0.5),
+                    opacity=0.6,
                 ),
+                opacity=0.7,
             )
 
         fig.update_layout(
@@ -878,3 +883,82 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
         figures.append(fig)
 
     return figures
+
+
+def loss_over_step(df: pd.DataFrame, show_error: bool = True):
+    """
+    Visualize how the training loss evolves over training steps for each ansatz.
+    For each ansatz the per-step metric history is fetched from MLflow,
+    averaged over seeds, and plotted with optional error bars.
+
+    Args:
+        df (pd.DataFrame): DataFrame with columns "run_id", "ansatz", and
+            "train_pulse".
+        show_error (bool): Whether to display error bars (std over seeds).
+
+    Returns:
+        go.Figure: A figure showing loss over training steps.
+    """
+    import mlflow
+
+    ansatzes = sort_ansatzes(df["ansatz"].unique())
+    client = mlflow.tracking.MlflowClient()
+
+    def _collect_metric_history(ansatz_df, metric_name):
+        """Return a DataFrame with columns 'step' and one column per run."""
+        histories = {}
+        for run_id in ansatz_df["run_id"].values:
+            history = client.get_metric_history(run_id, metric_name)
+            if history:
+                histories[run_id] = {m.step: m.value for m in history}
+        if not histories:
+            return pd.DataFrame()
+        hist_df = pd.DataFrame(histories)
+        hist_df.index.name = "step"
+        hist_df = hist_df.sort_index()
+        return hist_df
+
+    fig = go.Figure()
+    color_it = iter(design.prim_colors_lst)
+
+    for ansatz in ansatzes[:10]:
+        ansatz_df = df[df["ansatz"] == ansatz]
+        # Try common loss metric names
+        hist_df = _collect_metric_history(ansatz_df, "train_loss")
+        if hist_df.empty:
+            hist_df = _collect_metric_history(ansatz_df, "loss")
+        if hist_df.empty:
+            continue
+
+        steps = hist_df.index.values
+        mean_vals = hist_df.mean(axis=1).values
+        std_vals = hist_df.std(axis=1).values
+
+        color = next(color_it)
+
+        fig.add_scatter(
+            x=steps,
+            y=mean_vals,
+            error_y=dict(type="data", array=std_vals, visible=show_error, thickness=1),
+            mode="lines+markers",
+            name=circuit_name_to_str(ansatz),
+            line=dict(color=color, width=1.5),
+            marker=dict(
+                size=6,
+                line=dict(width=0.5),
+                opacity=0.6,
+            ),
+            opacity=0.7,
+        )
+
+    fig.update_layout(
+        title="Loss over Step",
+        xaxis_title="Step",
+        yaxis_title="Loss",
+        template=design.template,
+        font=dict(size=design.font_size),
+    )
+
+    fig.update_yaxes(type="log")
+
+    return fig
