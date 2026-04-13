@@ -149,7 +149,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     symbol_it = iter(design.symbols_lst)
     # Create a trace for each circuit type
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:10]:
 
         color_it = iter(
             plotly.colors.sample_colorscale(design.seq_colors, len(variances))
@@ -186,7 +186,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             )
 
     symbol_it = iter(design.symbols_lst)
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:10]:
         fig.add_scatter(
             x=[None],
             y=[None],
@@ -277,7 +277,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
     for variance, color in zip(reversed(variances), reversed(colors)):
         means = []
         stds = []
-        for ansatz in ansatzes:
+        for ansatz in ansatzes[:10]:
             subset = filtered_df[
                 (filtered_df["ansatz"] == ansatz)
                 & (filtered_df["pulse_params_variance"] == variance)
@@ -359,7 +359,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     symbol_it = iter(design.symbols_lst)
     # Create a trace for each circuit type
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:10]:
 
         color_it = iter(
             plotly.colors.sample_colorscale(design.seq_colors, len(variances))
@@ -411,7 +411,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     )
 
     symbol_it = iter(design.symbols_lst)
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:10]:
         fig.add_scatter(
             x=[None],
             y=[None],
@@ -491,7 +491,7 @@ def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error
 
     color_it = iter(design.prim_colors_lst)
 
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:10]:
         ansatz_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
         # Baseline: zero distortion (variance == 0)
@@ -573,7 +573,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     color_it = iter(design.prim_colors_lst)
 
     # Create a trace for each circuit type
-    for ansatz in ansatzes:
+    for ansatz in ansatzes[:10]:
         # Filter data for this circuit type
         circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
 
@@ -772,7 +772,7 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
 
         means = []
         stds = []
-        for ansatz in ansatzes:
+        for ansatz in ansatzes[:10]:
             subset = df[(df["ansatz"] == ansatz) & (df["train_pulse"] == train_pulse)]
             means.append(subset["train_mse"].mean())
             stds.append(subset["train_mse"].std())
@@ -929,7 +929,7 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
     for ansatz in ansatzes[:10]:
         ansatz_df = df[df["ansatz"] == ansatz]
         # Try common loss metric names
-        hist_df = _collect_metric_history(ansatz_df, "train_loss")
+        hist_df = _collect_metric_history(ansatz_df, "train_mse")
         if hist_df.empty:
             hist_df = _collect_metric_history(ansatz_df, "loss")
         if hist_df.empty:
