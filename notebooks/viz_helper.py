@@ -59,10 +59,10 @@ class design:
         return dict(
             orientation="h",
             yanchor="top",
-            y=-0.25,
+            y=-0.3,
             xanchor="center",
             x=0.5,
-            entrywidth=120,
+            entrywidth=40,
             entrywidthmode="pixels",
         )
 
@@ -104,8 +104,8 @@ def viz_study_1(df, max_distortion, show_error):
     figures = []
 
     figures.append(fcc_over_distortion(df, max_distortion, show_error))
-    figures.append(coeff_mean_over_distortion(df, max_distortion, show_error))
-    figures.append(coeff_var_over_distortion(df, max_distortion, show_error))
+    # figures.append(coeff_mean_over_distortion(df, max_distortion, show_error))
+    # figures.append(coeff_var_over_distortion(df, max_distortion, show_error))
     figures.append(coeff_var_delta_over_distortion(df, max_distortion, show_error))
     figures.append(frequency_histogram_by_distortion(df, max_distortion, show_error))
 
