@@ -53,6 +53,19 @@ class design:
     sec_colors_lst = plotly.colors.qualitative.Safe
     seq_colors = plotly.colors.sequential.dense_r
 
+    @staticmethod
+    def horizontal_legend():
+        """Returns legend configuration for horizontal layout below figure."""
+        return dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.15,
+            xanchor="center",
+            x=0.5,
+            entrywidth=70,
+            entrywidthmode="pixels",
+        )
+
 
 def circuit_name_to_str(circuit_name: str):
     if "Circuit" in circuit_name:
@@ -229,8 +242,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         yaxis_title="Coefficient Mean",
         template=design.template,
         font=dict(size=design.font_size),
-        legend_indentation=-12,
-        legend_tracegroupgap=3,
+        legend=design.horizontal_legend(),
     )
 
     fig.update_yaxes(type="log")
@@ -326,8 +338,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
         yaxis_title="# of Frequencies",
         template=design.template,
         font=dict(size=design.font_size),
-        legend_indentation=-12,
-        legend_tracegroupgap=3,
+        legend=design.horizontal_legend(),
     )
 
     fig.update_yaxes(dtick=1)
@@ -454,8 +465,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         yaxis_title="Coefficient Variance",
         template=design.template,
         font=dict(size=design.font_size),
-        legend_indentation=-12,
-        legend_tracegroupgap=3,
+        legend=design.horizontal_legend(),
     )
 
     fig.update_yaxes(type="log")
@@ -548,6 +558,7 @@ def coeff_var_delta_over_distortion(df: pd.DataFrame, max_distortion, show_error
         yaxis_title="Coefficient Variance Ratio",
         template=design.template,
         font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
     )
 
     fig.update_yaxes(type="log")
@@ -599,6 +610,7 @@ def fcc_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         yaxis_title="FCC",
         template=design.template,
         font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
     )
 
     return fig
@@ -646,6 +658,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         yaxis_title="Fidelity",
         template=design.template,
         font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
     )
 
     fig.update_yaxes(type="log")
@@ -695,6 +708,7 @@ def trace_distance_over_distortion(df: pd.DataFrame, max_distortion, show_error)
         yaxis_title="Trace Distance",
         template=design.template,
         font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
     )
 
     fig.update_yaxes(type="log")
@@ -737,6 +751,7 @@ def expressibility_over_distortion(df: pd.DataFrame, max_distortion, show_error)
         yaxis_title="Expressibility",
         template=design.template,
         font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
     )
 
     fig.update_yaxes(type="log")
@@ -792,6 +807,7 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
         barmode="group",
         template=design.template,
         font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
     )
 
     return fig
@@ -868,9 +884,15 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
                 # Add shaded area for standard deviation
                 fig.add_scatter(
                     x=np.concatenate([steps, steps[::-1]]),
-                    y=np.concatenate([mean_vals + std_vals, (mean_vals - std_vals)[::-1]]),
+                    y=np.concatenate(
+                        [mean_vals + std_vals, (mean_vals - std_vals)[::-1]]
+                    ),
                     fill="toself",
-                    fillcolor=color.replace("rgb", "rgba").replace(")", ", 0.2)") if "rgb" in color else color,
+                    fillcolor=(
+                        color.replace("rgb", "rgba").replace(")", ", 0.2)")
+                        if "rgb" in color
+                        else color
+                    ),
                     line=dict(color="rgba(0,0,0,0)"),
                     showlegend=False,
                     legendgroup=ansatz,
@@ -883,6 +905,7 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
             yaxis_title=y_label,
             template=design.template,
             font=dict(size=design.font_size),
+            legend=design.horizontal_legend(),
         )
 
         figures.append(fig)
@@ -956,7 +979,11 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
                 x=np.concatenate([steps, steps[::-1]]),
                 y=np.concatenate([mean_vals + std_vals, (mean_vals - std_vals)[::-1]]),
                 fill="toself",
-                fillcolor=color.replace("rgb", "rgba").replace(")", ", 0.2)") if "rgb" in color else color,
+                fillcolor=(
+                    color.replace("rgb", "rgba").replace(")", ", 0.2)")
+                    if "rgb" in color
+                    else color
+                ),
                 line=dict(color="rgba(0,0,0,0)"),
                 showlegend=False,
                 legendgroup=ansatz,
@@ -969,6 +996,7 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
         yaxis_title="Loss",
         template=design.template,
         font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
     )
 
     fig.update_yaxes(type="log")
