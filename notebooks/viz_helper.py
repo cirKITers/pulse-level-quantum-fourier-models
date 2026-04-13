@@ -858,19 +858,24 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
             fig.add_scatter(
                 x=steps,
                 y=mean_vals,
-                error_y=dict(
-                    type="data", array=std_vals, visible=show_error, thickness=1
-                ),
-                mode="lines+markers",
+                mode="lines",
                 name=circuit_name_to_str(ansatz),
                 line=dict(color=color, width=1.5),
-                marker=dict(
-                    size=6,
-                    line=dict(width=0.5),
-                    opacity=0.6,
-                ),
-                opacity=0.7,
+                legendgroup=ansatz,
             )
+
+            if show_error:
+                # Add shaded area for standard deviation
+                fig.add_scatter(
+                    x=np.concatenate([steps, steps[::-1]]),
+                    y=np.concatenate([mean_vals + std_vals, (mean_vals - std_vals)[::-1]]),
+                    fill="toself",
+                    fillcolor=color.replace("rgb", "rgba").replace(")", ", 0.2)") if "rgb" in color else color,
+                    line=dict(color="rgba(0,0,0,0)"),
+                    showlegend=False,
+                    legendgroup=ansatz,
+                    hoverinfo="skip",
+                )
 
         fig.update_layout(
             title=title,
@@ -939,17 +944,24 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
         fig.add_scatter(
             x=steps,
             y=mean_vals,
-            error_y=dict(type="data", array=std_vals, visible=show_error, thickness=1),
-            mode="lines+markers",
+            mode="lines",
             name=circuit_name_to_str(ansatz),
             line=dict(color=color, width=1.5),
-            marker=dict(
-                size=6,
-                line=dict(width=0.5),
-                opacity=0.6,
-            ),
-            opacity=0.7,
+            legendgroup=ansatz,
         )
+
+        if show_error:
+            # Add shaded area for standard deviation
+            fig.add_scatter(
+                x=np.concatenate([steps, steps[::-1]]),
+                y=np.concatenate([mean_vals + std_vals, (mean_vals - std_vals)[::-1]]),
+                fill="toself",
+                fillcolor=color.replace("rgb", "rgba").replace(")", ", 0.2)") if "rgb" in color else color,
+                line=dict(color="rgba(0,0,0,0)"),
+                showlegend=False,
+                legendgroup=ansatz,
+                hoverinfo="skip",
+            )
 
     fig.update_layout(
         title="Loss over Step",
