@@ -12,23 +12,25 @@ cache = False
 
 # scenarios for plotting
 scenarios = {
-    # "study-1": {
-    #     "experiment_name": "study-1-10",
-    #     "show_error": False,
-    #     # "ignore_ansatzes": ["Circuit_10", "Circuit_3", "Circuit_18", "Circuit_7", "Circuit_9", "Circuit_16"]
-    #     # "ignore_ansatzes": ["Circuit_13", "Circuit_17", "Circuit_8", "Hardware_Efficient"]
-    # },
+    "study-1": {
+        "experiment_name": "study-1-3",
+        "show_error": False,
+        "threshold": 1e-3,
+        # "ignore_ansatzes": ["Circuit_10", "Circuit_3", "Circuit_18", "Circuit_7", "Circuit_9", "Circuit_16"]
+        # "ignore_ansatzes": ["Circuit_13", "Circuit_17", "Circuit_8", "Hardware_Efficient"]
+    },
     # "study-2": {
     #     "experiment_name": "study-2-3",
     #     "show_error": True,
     # },
-    "study-3": {
-        "experiment_name": "study-3-0",
-        "show_error": True,
-    },
+    # "study-3": {
+    #     "experiment_name": "study-3-0",
+    #     "show_error": True,
+    # },
     # "study-4": {
     #     "experiment_name": "study-4-1",
     #     "show_error": True,
+    #     "mse_step": 500,  # training step at which to evaluate MSE (None = final)
     # },
 }
 
@@ -65,6 +67,7 @@ for scenario, setting in scenarios.items():
         figures = viz_study_1(
             df,
             max_distortion=max_distortion,
+            threshold=setting["threshold"],
             show_error=setting["show_error"],
         )
 
@@ -84,6 +87,7 @@ for scenario, setting in scenarios.items():
         figures = viz_study_4(
             df,
             show_error=setting["show_error"],
+            mse_step=setting.get("mse_step", None),
         )
 
     save_figures(

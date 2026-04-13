@@ -59,11 +59,9 @@ class design:
         return dict(
             orientation="h",
             yanchor="top",
-            y=-0.3,
+            y=-0.25,
             xanchor="center",
             x=0.5,
-            entrywidth=40,
-            entrywidthmode="pixels",
         )
 
 
@@ -100,14 +98,16 @@ def save_figures(
         fig.write_image(filename, scale=scale)
 
 
-def viz_study_1(df, max_distortion, show_error):
+def viz_study_1(df, max_distortion, threshold, show_error):
     figures = []
 
     figures.append(fcc_over_distortion(df, max_distortion, show_error))
     # figures.append(coeff_mean_over_distortion(df, max_distortion, show_error))
     # figures.append(coeff_var_over_distortion(df, max_distortion, show_error))
     figures.append(coeff_var_delta_over_distortion(df, max_distortion, show_error))
-    figures.append(frequency_histogram_by_distortion(df, max_distortion, show_error))
+    figures.append(
+        frequency_histogram_by_distortion(df, max_distortion, threshold, show_error)
+    )
 
     return figures
 
@@ -251,7 +251,9 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     return fig
 
 
-def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_error):
+def frequency_histogram_by_distortion(
+    df: pd.DataFrame, max_distortion, threshold, show_error
+):
     """
     Plot the number of active frequencies (|coeff| > threshold) per circuit,
     colored by distortion level.  Each (circuit, variance) combination is
@@ -264,7 +266,6 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
         max_distortion: Upper bound on pulse_params_variance to include.
         show_error: Whether to display error bars (std over seeds).
     """
-    THRESHOLD = 10e-6
     fig = go.Figure()
 
     # Extract frequency indices from column names
@@ -301,7 +302,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
                 & (filtered_df["pulse_params_variance"] == variance)
             ]
             # Per-seed: count frequencies whose var coefficient > threshold
-            n_freqs_per_seed = (subset[var_cols].abs() > THRESHOLD).sum(axis=1)
+            n_freqs_per_seed = (subset[var_cols].abs() > threshold).sum(axis=1)
             means.append(n_freqs_per_seed.mean())
             stds.append(n_freqs_per_seed.std())
 
