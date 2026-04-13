@@ -59,10 +59,10 @@ class design:
         return dict(
             orientation="h",
             yanchor="top",
-            y=-0.15,
+            y=-0.25,
             xanchor="center",
             x=0.5,
-            entrywidth=70,
+            entrywidth=120,
             entrywidthmode="pixels",
         )
 
@@ -996,45 +996,57 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
     color_it = iter(design.prim_colors_lst)
 
     for ansatz in ansatzes[:10]:
-        ansatz_df = df[df["ansatz"] == ansatz]
-        # Try common loss metric names
-        hist_df = _collect_metric_history(ansatz_df, "train_mse")
-        if hist_df.empty:
-            hist_df = _collect_metric_history(ansatz_df, "loss")
-        if hist_df.empty:
-            continue
-
-        steps = hist_df.index.values
-        mean_vals = hist_df.mean(axis=1).values
-        std_vals = hist_df.std(axis=1).values
-
         color = next(color_it)
 
-        fig.add_scatter(
-            x=steps,
-            y=mean_vals,
-            mode="lines",
-            name=circuit_name_to_str(ansatz),
-            line=dict(color=color, width=1.5),
-            legendgroup=ansatz,
-        )
+        for train_pulse, dash_style, suffix in [
+            (True, "solid", "+ Pulse"),
+            (False, "dash", "Gate"),
+        ]:
+            subset = df[(df["ansatz"] == ansatz) & (df["train_pulse"] == train_pulse)]
+            if subset.empty:
+                continue
 
-        if show_error:
-            # Add shaded area for standard deviation
+            # Try common loss metric names
+            hist_df = _collect_metric_history(subset, "train_mse")
+            if hist_df.empty:
+                hist_df = _collect_metric_history(subset, "loss")
+            if hist_df.empty:
+                continue
+
+            steps = hist_df.index.values
+            mean_vals = hist_df.mean(axis=1).values
+            std_vals = hist_df.std(axis=1).values
+
+            legend_name = f"{circuit_name_to_str(ansatz)} ({suffix})"
+            legend_group = f"{ansatz}_{train_pulse}"
+
             fig.add_scatter(
-                x=np.concatenate([steps, steps[::-1]]),
-                y=np.concatenate([mean_vals + std_vals, (mean_vals - std_vals)[::-1]]),
-                fill="toself",
-                fillcolor=(
-                    color.replace("rgb", "rgba").replace(")", ", 0.2)")
-                    if "rgb" in color
-                    else color
-                ),
-                line=dict(color="rgba(0,0,0,0)"),
-                showlegend=False,
-                legendgroup=ansatz,
-                hoverinfo="skip",
+                x=steps,
+                y=mean_vals,
+                mode="lines",
+                name=legend_name,
+                line=dict(color=color, width=1.5, dash=dash_style),
+                legendgroup=legend_group,
             )
+
+            if show_error:
+                # Add shaded area for standard deviation
+                fig.add_scatter(
+                    x=np.concatenate([steps, steps[::-1]]),
+                    y=np.concatenate(
+                        [mean_vals + std_vals, (mean_vals - std_vals)[::-1]]
+                    ),
+                    fill="toself",
+                    fillcolor=(
+                        color.replace("rgb", "rgba").replace(")", ", 0.2)")
+                        if "rgb" in color
+                        else color
+                    ),
+                    line=dict(color="rgba(0,0,0,0)"),
+                    showlegend=False,
+                    legendgroup=legend_group,
+                    hoverinfo="skip",
+                )
 
     fig.update_layout(
         title="Loss over Step",
