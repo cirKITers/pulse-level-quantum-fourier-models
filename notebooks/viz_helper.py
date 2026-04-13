@@ -274,8 +274,13 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
     # Filter rows where pulse_params_variance is at most max_distortion
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
-    # Get unique circuit types and variances
-    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
+    # Get unique circuit types sorted by number of pulse parameters
+    ansatzes = sorted(
+        filtered_df["ansatz"].unique(),
+        key=lambda a: filtered_df.loc[
+            filtered_df["ansatz"] == a, "model.n_pulse_params"
+        ].iloc[0],
+    )
     variances = sorted(filtered_df["pulse_params_variance"].unique())
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
@@ -289,7 +294,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
     for variance, color in zip(reversed(variances), reversed(colors)):
         means = []
         stds = []
-        for ansatz in ansatzes[:10]:
+        for ansatz in ansatzes:
             subset = filtered_df[
                 (filtered_df["ansatz"] == ansatz)
                 & (filtered_df["pulse_params_variance"] == variance)
@@ -339,6 +344,7 @@ def frequency_histogram_by_distortion(df: pd.DataFrame, max_distortion, show_err
         template=design.template,
         font=dict(size=design.font_size),
         legend=design.horizontal_legend(),
+        xaxis_tickangle=-90,
     )
 
     fig.update_yaxes(dtick=1)
