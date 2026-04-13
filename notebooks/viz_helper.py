@@ -994,13 +994,15 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
 
     fig = go.Figure()
     color_it = iter(design.prim_colors_lst)
+    ansatz_colors = {}
 
     for ansatz in ansatzes[:10]:
         color = next(color_it)
+        ansatz_colors[ansatz] = color
 
-        for train_pulse, dash_style, suffix in [
-            (True, "solid", "+ Pulse"),
-            (False, "dash", "Gate"),
+        for train_pulse, dash_style in [
+            (True, "solid"),
+            (False, "dash"),
         ]:
             subset = df[(df["ansatz"] == ansatz) & (df["train_pulse"] == train_pulse)]
             if subset.empty:
@@ -1017,14 +1019,13 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
             mean_vals = hist_df.mean(axis=1).values
             std_vals = hist_df.std(axis=1).values
 
-            legend_name = f"{circuit_name_to_str(ansatz)} ({suffix})"
             legend_group = f"{ansatz}_{train_pulse}"
 
             fig.add_scatter(
                 x=steps,
                 y=mean_vals,
                 mode="lines",
-                name=legend_name,
+                showlegend=False,
                 line=dict(color=color, width=1.5, dash=dash_style),
                 legendgroup=legend_group,
             )
@@ -1047,6 +1048,35 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
                     legendgroup=legend_group,
                     hoverinfo="skip",
                 )
+
+    # Add legend entries for each ansatz (colored, solid)
+    for ansatz, color in ansatz_colors.items():
+        fig.add_scatter(
+            x=[None],
+            y=[None],
+            mode="lines",
+            name=circuit_name_to_str(ansatz),
+            line=dict(color=color, width=1.5),
+            showlegend=True,
+        )
+
+    # Add legend entries for line style (grey)
+    fig.add_scatter(
+        x=[None],
+        y=[None],
+        mode="lines",
+        name="+ Pulse",
+        line=dict(color="gray", width=1.5, dash="solid"),
+        showlegend=True,
+    )
+    fig.add_scatter(
+        x=[None],
+        y=[None],
+        mode="lines",
+        name="Gate",
+        line=dict(color="gray", width=1.5, dash="dash"),
+        showlegend=True,
+    )
 
     fig.update_layout(
         title="Loss over Step",
