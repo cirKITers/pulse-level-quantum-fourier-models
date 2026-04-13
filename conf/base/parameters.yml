@@ -15,6 +15,7 @@ model:
   circuit_type: "Circuit_3" # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
   data_reupload: True
   encoding_gates: ["RY"]
+  encoding_strategy: "ternary" # hamming (default), binary, ternary
   output_qubit: -1
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]

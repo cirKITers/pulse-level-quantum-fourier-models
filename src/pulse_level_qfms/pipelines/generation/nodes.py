@@ -1,5 +1,6 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Datasets
+from qml_essentials.ansaetze import Encoding
 
 from typing import List, Dict, Union, Callable
 import jax
@@ -24,6 +25,7 @@ def generate_model(
     circuit_type: str,
     data_reupload: bool,
     encoding_gates: Union[str, Callable, List[str], List[Callable]],
+    encoding_strategy: str,
     initialization: str,
     initialization_domain: List[float],
     output_qubit: int,
@@ -38,7 +40,7 @@ def generate_model(
         n_layers=n_layers,
         circuit_type=circuit_type,
         data_reupload=data_reupload,
-        encoding=encoding_gates,
+        encoding=Encoding(strategy=encoding_strategy, gates=encoding_gates),
         output_qubit=output_qubit,
         initialization=initialization,
         initialization_domain=initialization_domain,

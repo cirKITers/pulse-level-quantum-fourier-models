@@ -20,6 +20,7 @@ def create_model_pipeline(**kwargs) -> Pipeline:
                     "params:model.circuit_type",
                     "params:model.data_reupload",
                     "params:model.encoding_gates",
+                    "params:model.encoding_strategy",
                     "params:model.initialization",
                     "params:model.initialization_domain",
                     "params:model.output_qubit",

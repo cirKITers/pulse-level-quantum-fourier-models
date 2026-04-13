@@ -167,7 +167,7 @@ def generate_df(run_ids: List[str]):
             row["data.seed"] = int(run.data.params["data.seed"])
         if "model.n_pulse_params" in run.data.params:
             row["model.n_pulse_params"] = int(run.data.params["model.n_pulse_params"])
-            row["model.n_params"] = int(run.data.params["model.n_params"])
+            row["model.n_gate_params"] = int(run.data.params["model.n_gate_params"])
 
         frequencies = sorted(
             [

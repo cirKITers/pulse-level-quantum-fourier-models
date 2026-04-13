@@ -281,7 +281,7 @@ def frequency_histogram_by_distortion(
         filtered_df["ansatz"].unique(),
         key=lambda a: (
             filtered_df.loc[filtered_df["ansatz"] == a, "model.n_pulse_params"].iloc[0]
-            / filtered_df.loc[filtered_df["ansatz"] == a, "model.n_params"].iloc[0]
+            / filtered_df.loc[filtered_df["ansatz"] == a, "model.n_gate_params"].iloc[0]
         ),
     )
     variances = sorted(filtered_df["pulse_params_variance"].unique())
@@ -798,7 +798,7 @@ def pulse_param_mse_comparison(
         df["ansatz"].unique(),
         key=lambda a: (
             df.loc[df["ansatz"] == a, "model.n_pulse_params"].iloc[0]
-            / df.loc[df["ansatz"] == a, "model.n_params"].iloc[0]
+            / df.loc[df["ansatz"] == a, "model.n_gate_params"].iloc[0]
         ),
     )
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
