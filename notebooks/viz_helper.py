@@ -129,10 +129,10 @@ def viz_study_3(df, max_distortion, show_error):
     return figures
 
 
-def viz_study_4(df, show_error):
+def viz_study_4(df, show_error, mse_step=None):
     figures = []
 
-    figures.append(pulse_param_mse_comparison(df, show_error))
+    figures.append(pulse_param_mse_comparison(df, show_error, mse_step=mse_step))
     figures.extend(pulse_mean_and_variance_over_step(df, show_error))
     figures.append(loss_over_step(df, show_error))
 
@@ -170,8 +170,9 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         symbol = next(symbol_it)
         for variance in variances:
             # Filter data for this circuit type
-            circuit_distortion_df = filtered_df[filtered_df["ansatz"] == ansatz][
-                filtered_df["pulse_params_variance"] == variance
+            circuit_distortion_df = filtered_df[
+                (filtered_df["ansatz"] == ansatz)
+                & (filtered_df["pulse_params_variance"] == variance)
             ]
 
             means = (
@@ -384,8 +385,9 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
         symbol = next(symbol_it)
         for variance in variances:
             # Filter data for this circuit type
-            circuit_distortion_df = filtered_df[filtered_df["ansatz"] == ansatz][
-                filtered_df["pulse_params_variance"] == variance
+            circuit_distortion_df = filtered_df[
+                (filtered_df["ansatz"] == ansatz)
+                & (filtered_df["pulse_params_variance"] == variance)
             ]
 
             means = (
@@ -765,20 +767,28 @@ def expressibility_over_distortion(df: pd.DataFrame, max_distortion, show_error)
     return fig
 
 
-def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
+def pulse_param_mse_comparison(
+    df: pd.DataFrame, show_error: bool = True, mse_step: int = None
+):
     """
-    Compare the final train MSE across circuits for train_pulse=True vs False.
+    Compare the train MSE across circuits for train_pulse=True vs False.
     Produces a grouped bar chart with circuits on the x-axis and two bars per
     circuit (one for each train_pulse setting), including error bars over seeds.
 
     Args:
         df (pd.DataFrame): DataFrame with columns "ansatz", "train_pulse",
-            "train_mse", and "data.seed".
+            "train_mse", "run_id", and "data.seed".
         show_error (bool): Whether to display error bars. Defaults to True.
+        mse_step (int, optional): The training step at which to evaluate the
+            MSE. If None, uses the final ``train_mse`` metric stored in the
+            run summary. If specified, fetches the metric history from MLflow
+            and picks the value at the given step.
 
     Returns:
         go.Figure: The plotly figure.
     """
+    import mlflow
+
     fig = go.Figure()
 
     ansatzes = sorted(
@@ -786,6 +796,24 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
         key=lambda a: df.loc[df["ansatz"] == a, "model.n_pulse_params"].iloc[0],
     )
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
+
+    # If a specific step is requested, fetch per-run metric history
+    step_mse_cache = {}
+    if mse_step is not None:
+        client = mlflow.tracking.MlflowClient()
+        for run_id in df["run_id"].values:
+            history = client.get_metric_history(run_id, "train_mse")
+            if not history:
+                history = client.get_metric_history(run_id, "loss")
+            if history:
+                step_map = {m.step: m.value for m in history}
+                # Use exact step if available, otherwise closest step <= mse_step
+                if mse_step in step_map:
+                    step_mse_cache[run_id] = step_map[mse_step]
+                else:
+                    valid_steps = [s for s in step_map if s <= mse_step]
+                    if valid_steps:
+                        step_mse_cache[run_id] = step_map[max(valid_steps)]
 
     color_it = iter(design.prim_colors_lst)
     for train_pulse, label in [(False, "Gate"), (True, "+ Pulse")]:
@@ -795,8 +823,19 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
         stds = []
         for ansatz in ansatzes:
             subset = df[(df["ansatz"] == ansatz) & (df["train_pulse"] == train_pulse)]
-            means.append(subset["train_mse"].mean())
-            stds.append(subset["train_mse"].std())
+
+            if mse_step is not None:
+                # Look up the MSE at the requested step for each run
+                values = [
+                    step_mse_cache[rid]
+                    for rid in subset["run_id"].values
+                    if rid in step_mse_cache
+                ]
+                means.append(np.mean(values) if values else np.nan)
+                stds.append(np.std(values) if values else np.nan)
+            else:
+                means.append(subset["train_mse"].mean())
+                stds.append(subset["train_mse"].std())
 
         fig.add_bar(
             x=x_labels,
@@ -806,8 +845,9 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
             marker=dict(color=color),
         )
 
+    step_label = f" @ Step {mse_step}" if mse_step is not None else ""
     fig.update_layout(
-        title="MSE: Gate vs. Gate + Pulse",
+        title=f"MSE: Gate vs. Gate + Pulse{step_label}",
         xaxis_title="Circuit",
         yaxis_title="MSE",
         barmode="group",
