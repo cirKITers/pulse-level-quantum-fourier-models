@@ -276,12 +276,13 @@ def frequency_histogram_by_distortion(
     # Filter rows where pulse_params_variance is at most max_distortion
     filtered_df = df[df["pulse_params_variance"] <= max_distortion]
 
-    # Get unique circuit types sorted by number of pulse parameters
+    # Get unique circuit types sorted by ratio of pulse params to standard params
     ansatzes = sorted(
         filtered_df["ansatz"].unique(),
-        key=lambda a: filtered_df.loc[
-            filtered_df["ansatz"] == a, "model.n_pulse_params"
-        ].iloc[0],
+        key=lambda a: (
+            filtered_df.loc[filtered_df["ansatz"] == a, "model.n_pulse_params"].iloc[0]
+            / filtered_df.loc[filtered_df["ansatz"] == a, "model.n_params"].iloc[0]
+        ),
     )
     variances = sorted(filtered_df["pulse_params_variance"].unique())
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
@@ -792,9 +793,13 @@ def pulse_param_mse_comparison(
 
     fig = go.Figure()
 
+    # Sort ansatzes by ratio of pulse params to standard params
     ansatzes = sorted(
         df["ansatz"].unique(),
-        key=lambda a: df.loc[df["ansatz"] == a, "model.n_pulse_params"].iloc[0],
+        key=lambda a: (
+            df.loc[df["ansatz"] == a, "model.n_pulse_params"].iloc[0]
+            / df.loc[df["ansatz"] == a, "model.n_params"].iloc[0]
+        ),
     )
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
@@ -1059,6 +1064,7 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
             name=circuit_name_to_str(ansatz),
             line=dict(color=color, width=1.5),
             showlegend=True,
+            legendgroup="circuits",
         )
 
     # Add legend entries for line style (grey)
@@ -1066,17 +1072,19 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
         x=[None],
         y=[None],
         mode="lines",
-        name="+ Pulse",
+        name="+ Pulse (solid)",
         line=dict(color="gray", width=1.5, dash="solid"),
         showlegend=True,
+        legendgroup="styles",
     )
     fig.add_scatter(
         x=[None],
         y=[None],
         mode="lines",
-        name="Gate",
+        name="Gate (dashed)",
         line=dict(color="gray", width=1.5, dash="dash"),
         showlegend=True,
+        legendgroup="styles",
     )
 
     fig.update_layout(
@@ -1085,7 +1093,14 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
         yaxis_title="Loss",
         template=design.template,
         font=dict(size=design.font_size),
-        legend=design.horizontal_legend(),
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.25,
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(b=120),
     )
 
     fig.update_yaxes(type="log")
