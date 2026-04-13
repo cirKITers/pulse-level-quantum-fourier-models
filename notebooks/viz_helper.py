@@ -162,7 +162,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     symbol_it = iter(design.symbols_lst)
     # Create a trace for each circuit type
-    for ansatz in ansatzes[:10]:
+    for ansatz in ansatzes:
 
         color_it = iter(
             plotly.colors.sample_colorscale(design.seq_colors, len(variances))
@@ -199,7 +199,7 @@ def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             )
 
     symbol_it = iter(design.symbols_lst)
-    for ansatz in ansatzes[:10]:
+    for ansatz in ansatzes:
         fig.add_scatter(
             x=[None],
             y=[None],
@@ -376,7 +376,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
     symbol_it = iter(design.symbols_lst)
     # Create a trace for each circuit type
-    for ansatz in ansatzes[:10]:
+    for ansatz in ansatzes:
 
         color_it = iter(
             plotly.colors.sample_colorscale(design.seq_colors, len(variances))
@@ -428,7 +428,7 @@ def coeff_var_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     )
 
     symbol_it = iter(design.symbols_lst)
-    for ansatz in ansatzes[:10]:
+    for ansatz in ansatzes:
         fig.add_scatter(
             x=[None],
             y=[None],
@@ -793,7 +793,7 @@ def pulse_param_mse_comparison(df: pd.DataFrame, show_error: bool = True):
 
         means = []
         stds = []
-        for ansatz in ansatzes[:10]:
+        for ansatz in ansatzes:
             subset = df[(df["ansatz"] == ansatz) & (df["train_pulse"] == train_pulse)]
             means.append(subset["train_mse"].mean())
             stds.append(subset["train_mse"].std())
