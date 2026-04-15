@@ -51,7 +51,7 @@ def generate_model(
     mlflow.log_text(str(model), "model.txt")
 
     mlflow.log_param("model.n_pulse_params", model.pulse_params.size)
-    mlflow.log_metric("model.n_gate_params", model.params.size)
+    mlflow.log_param("model.n_gate_params", model.params.size)
 
     return {"model": model}
 
