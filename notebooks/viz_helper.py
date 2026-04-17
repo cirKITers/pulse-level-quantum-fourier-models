@@ -281,7 +281,7 @@ def frequency_histogram_by_distortion(
         filtered_df["ansatz"].unique(),
         key=lambda a: (
             filtered_df.loc[filtered_df["ansatz"] == a, "model.n_pulse_params"].iloc[0]
-            / filtered_df.loc[filtered_df["ansatz"] == a, "model.n_gate_params"].iloc[0]
+            # / filtered_df.loc[filtered_df["ansatz"] == a, "model.n_gate_params"].iloc[0]
         ),
     )
     variances = sorted(filtered_df["pulse_params_variance"].unique())
@@ -642,7 +642,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     # Get unique circuit types
     ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
     color_it = iter(design.prim_colors_lst)
-
+    
     # Create a trace for each circuit type
     for ansatz in ansatzes[:10]:  # TODO: just ignore some circuits which are redundant
         # Filter data for this circuit type
@@ -650,7 +650,7 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
 
         # average the fidelity over different seeds for a given distortion
         grouped_df = circuit_df.groupby("pulse_params_variance")["fidelity"]
-        mean = grouped_df.mean()
+        mean = 1-grouped_df.mean() #infidelity
         std = grouped_df.std()
 
         fig.add_scatter(
@@ -661,11 +661,11 @@ def fidelity_over_distortion(df: pd.DataFrame, max_distortion, show_error):
             name=f"{circuit_name_to_str(ansatz)}",
             line=dict(color=next(color_it), width=design.marker_line_width),
         )
-
+    
     fig.update_layout(
-        title="Fidelity over PP Variances",
+        title="Infidelity over PP Variances",
         xaxis_title="Pulse Parameter Variances",
-        yaxis_title="Fidelity",
+        yaxis_title="Infidelity",
         template=design.template,
         font=dict(size=design.font_size),
         legend=design.horizontal_legend(),
@@ -798,7 +798,7 @@ def pulse_param_mse_comparison(
         df["ansatz"].unique(),
         key=lambda a: (
             df.loc[df["ansatz"] == a, "model.n_pulse_params"].iloc[0]
-            / df.loc[df["ansatz"] == a, "model.n_gate_params"].iloc[0]
+            # / df.loc[df["ansatz"] == a, "model.n_gate_params"].iloc[0]
         ),
     )
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
