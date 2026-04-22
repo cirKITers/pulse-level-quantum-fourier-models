@@ -19,6 +19,7 @@ model:
   output_qubit: -1
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]
+  decompose_circuit: False
   noise_params:
     BitFlip: 0.0
     PhaseFlip: 0.0

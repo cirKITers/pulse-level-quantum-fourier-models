@@ -61,6 +61,21 @@ def _flatten_pulse_params(pp, parent_wire_fn: str = "all"):
     the way down to the angle seen by the leaf gate.
     """
     if pp.is_leaf:
+        # Replace CZ with CPhase(π) so that the controlled-phase angle
+        # becomes a trainable scaler parameter.  At scaler=1.0 the gate
+        # is identical to CZ.
+        if pp.name == "CZ":
+            return [
+                (
+                    FlatStep(
+                        gate_name="CPhase",
+                        wire_fn=parent_wire_fn,
+                        has_param=True,
+                    ),
+                    lambda _w: jnp.pi,  # constant π, independent of w
+                )
+            ]
+
         has_param = pp.name in ("RX", "RY", "RZ")
         return [
             (
@@ -412,7 +427,7 @@ def generate_model(
     initialization_domain: List[float],
     output_qubit: int,
     seed: int,
-    train_pulse: bool,
+    decompose_circuit: bool,
 ) -> Dict[str, Model]:
     log.info(
         f"Creating model with {n_qubits} qubits, {n_layers} layers, "
@@ -422,7 +437,7 @@ def generate_model(
     effective_circuit_type: Union[str, type] = circuit_type
     scaler_mask: Optional[jnp.ndarray] = None
 
-    if not train_pulse:
+    if not decompose_circuit:
         log.info(
             f"train_pulse=False: decomposing '{circuit_type}' into basis gates "
             f"with trainable scalers."
@@ -470,9 +485,8 @@ def generate_model(
 
     mlflow.log_param("model.n_pulse_params", model.pulse_params.size)
     mlflow.log_param("model.n_gate_params", model.params.size)
-    mlflow.log_param("model.train_pulse", train_pulse)
+    
     if scaler_mask is not None:
-        mlflow.log_param("model.decomposed", True)
         mlflow.log_param(
             "model.n_decomposed_param_slots", int(len(scaler_mask))
         )
