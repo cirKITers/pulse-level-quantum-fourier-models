@@ -22,7 +22,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 @dataclass
-class FlatStep:
+class LeaveGate:
     """A single leaf-level gate produced by recursively flattening a
     :class:`PulseParams` decomposition tree.
 
@@ -57,7 +57,7 @@ def _flatten_pulse_params(pp, parent_wire_fn: str = "all"):
     """Recursively flatten a :class:`PulseParams` tree into leaf-level steps.
 
     Returns a list of ``(FlatStep, angle_chain)`` pairs where *angle_chain*
-    is a composed callable mapping the **original** gate parameter ``w`` all
+    is a composed callable mapping the original gate parameter ``w`` all
     the way down to the angle seen by the leaf gate.
     """
     if pp.is_leaf:
@@ -67,7 +67,7 @@ def _flatten_pulse_params(pp, parent_wire_fn: str = "all"):
         if pp.name == "CZ":
             return [
                 (
-                    FlatStep(
+                    LeaveGate(
                         gate_name="CPhase",
                         wire_fn=parent_wire_fn,
                         has_param=True,
@@ -79,7 +79,7 @@ def _flatten_pulse_params(pp, parent_wire_fn: str = "all"):
         has_param = pp.name in ("RX", "RY", "RZ")
         return [
             (
-                FlatStep(
+                LeaveGate(
                     gate_name=pp.name,
                     wire_fn=parent_wire_fn,
                     has_param=has_param,
@@ -110,13 +110,13 @@ def _flatten_pulse_params(pp, parent_wire_fn: str = "all"):
     return results
 
 
-def _classify_flat_steps(pp) -> List[FlatStep]:
+def _classify_flat_steps(pp) -> List[LeaveGate]:
     """Flatten a :class:`PulseParams` tree and classify each parameterised
     step as *fixed* (structural scaler) or *free* (depends on the original
     gate angle ``w``).
     """
     raw = _flatten_pulse_params(pp)
-    classified: List[FlatStep] = []
+    classified: List[LeaveGate] = []
     for flat_step, angle_chain in raw:
         if not flat_step.has_param:
             flat_step.is_fixed = False
@@ -151,7 +151,7 @@ class DecomposedBlock:
     """
 
     original_block: Block
-    flat_steps: List[FlatStep] = field(default_factory=list)
+    flat_steps: List[LeaveGate] = field(default_factory=list)
 
     @property
     def n_param_steps(self) -> int:
@@ -183,7 +183,7 @@ class DecomposedCircuit(Circuit):
     decomposition derived from :class:`PulseInformation`.
 
     For every decomposed gate that carries a *numeric* predefined parameter
-    (e.g. ``pi/2`` from a Hadamard decomposition) a trainable **scaler**
+    (e.g. ``pi/2`` from a Hadamard decomposition) a trainable scaler
     parameter is introduced so that the effective angle becomes
     ``scaler * fixed_value``.  For decomposition steps whose parameter
     depends on the original gate's angle (``w``) the scaler directly
@@ -237,7 +237,7 @@ class DecomposedCircuit(Circuit):
             block = db.original_block
 
             if db.flat_steps:
-                # --- decomposed block ---
+                # decomposed block
                 iterator = (
                     block.topology(n_qubits=n_qubits, **block.kwargs)
                     if block.is_entangling
@@ -259,7 +259,7 @@ class DecomposedCircuit(Circuit):
                         else:
                             gate_fn(wires=step_wires, **kwargs)
             else:
-                # --- undecomposed block (no known decomposition) ---
+                # undecomposed block (no known decomposition)
                 w_idx = block.apply(n_qubits, w, w_idx, **kwargs)
 
             Gates.Barrier(wires=list(range(n_qubits)), **kwargs)
@@ -437,9 +437,9 @@ def generate_model(
     effective_circuit_type: Union[str, type] = circuit_type
     scaler_mask: Optional[jnp.ndarray] = None
 
-    if not decompose_circuit:
+    if decompose_circuit:
         log.info(
-            f"train_pulse=False: decomposing '{circuit_type}' into basis gates "
+            f"Decomposing '{circuit_type}' into basis gates "
             f"with trainable scalers."
         )
         # Obtain the original structure from the named ansatz

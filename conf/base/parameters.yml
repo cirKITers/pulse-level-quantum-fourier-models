@@ -19,7 +19,7 @@ model:
   output_qubit: -1
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]
-  decompose_circuit: False
+  decompose_circuit: True
   noise_params:
     BitFlip: 0.0
     PhaseFlip: 0.0
@@ -35,7 +35,7 @@ train:
   loss_functions: ["mse"]
   loss_scalers: [1.0]
   train_unitary: True
-  train_pulse: True
+  train_pulse: False # must be false when decompose_circuit is true
 
 fcc:
   seed: 1000
