@@ -13,24 +13,22 @@ cache = False
 # scenarios for plotting
 scenarios = {
     "study-1": {
-        "experiment_name": "study-1-3",
+        "experiment_name": "study-1-14",
         "show_error": False,
-        "threshold": 1e-3,
-        # "ignore_ansatzes": ["Circuit_10", "Circuit_3", "Circuit_18", "Circuit_7", "Circuit_9", "Circuit_16"]
-        # "ignore_ansatzes": ["Circuit_13", "Circuit_17", "Circuit_8", "Hardware_Efficient"]
+        "threshold": 1e-4,
     },
     # "study-2": {
-    #     "experiment_name": "study-2-3",
-    #     "show_error": True,
+    #     "experiment_name": "study-2-2",
+    #     "show_error": False,
     # },
     # "study-3": {
     #     "experiment_name": "study-3-0",
     #     "show_error": True,
     # },
     # "study-4": {
-    #     "experiment_name": "study-4-1",
+    #     "experiment_name": "study-4-4",
     #     "show_error": True,
-    #     "mse_step": 500,  # training step at which to evaluate MSE (None = final)
+    #     # "mse_step": 500,  # training step at which to evaluate MSE (None = final)
     # },
 }
 
