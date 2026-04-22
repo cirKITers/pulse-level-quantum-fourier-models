@@ -25,6 +25,7 @@ def create_model_pipeline(**kwargs) -> Pipeline:
                     "params:model.initialization_domain",
                     "params:model.output_qubit",
                     "params:model.seed",
+                    "params:train.train_pulse"
                 ],
                 outputs={
                     "model": "model",

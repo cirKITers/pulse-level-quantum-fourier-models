@@ -34,7 +34,7 @@ train:
   loss_functions: ["mse"]
   loss_scalers: [1.0]
   train_unitary: True
-  train_pulse: False
+  train_pulse: True
 
 fcc:
   seed: 1000

@@ -30,6 +30,7 @@ def generate_model(
     initialization_domain: List[float],
     output_qubit: int,
     seed: int,
+    train_pulse: bool
 ) -> Dict[str, Model]:
     log.info(
         f"Creating model with {n_qubits} qubits, {n_layers} layers, and {circuit_type} circuit."
