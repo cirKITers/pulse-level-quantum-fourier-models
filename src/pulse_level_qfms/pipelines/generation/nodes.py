@@ -21,11 +21,6 @@ log = logging.getLogger(__name__)
 jax.config.update("jax_enable_x64", True)
 
 
-# ---------------------------------------------------------------------------
-# Gate decomposition utilities
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class FlatStep:
     """A single leaf-level gate produced by recursively flattening a
@@ -168,11 +163,6 @@ def _resolve_wires(wire_fn: str, wires) -> Union[int, list]:
     raise ValueError(f"Unknown wire_fn: {wire_fn!r}")
 
 
-# ---------------------------------------------------------------------------
-# DecomposedCircuit
-# ---------------------------------------------------------------------------
-
-
 class DecomposedCircuit(Circuit):
     """A :class:`Circuit` whose gates are replaced by their basis-gate
     decomposition derived from :class:`PulseInformation`.
@@ -195,7 +185,6 @@ class DecomposedCircuit(Circuit):
         super().__init__()
         self._decomposed_blocks = decomposed_blocks
 
-    # -- Circuit interface ---------------------------------------------------
 
     def n_params_per_layer(self, n_qubits: int) -> int:
         total = 0
@@ -260,10 +249,6 @@ class DecomposedCircuit(Circuit):
 
             Gates.Barrier(wires=list(range(n_qubits)), **kwargs)
 
-
-# ---------------------------------------------------------------------------
-# Factory helpers
-# ---------------------------------------------------------------------------
 
 
 def _build_decomposed_blocks(

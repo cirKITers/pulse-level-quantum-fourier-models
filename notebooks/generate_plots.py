@@ -1,4 +1,4 @@
-from data_helper import get_experiments_by_name, get_run_ids, cache_df
+from data_helper import get_experiments_by_name, get_run_ids, cache_df, export_csv
 from viz_helper import (
     save_figures,
     viz_study_1,
@@ -92,6 +92,13 @@ for scenario, setting in scenarios.items():
 
     save_figures(
         figures=figures,
+        name=scenario,
+        experiment_id=setting["experiment_id"],
+        hash=hs,
+    )
+
+    export_csv(
+        df=df,
         name=scenario,
         experiment_id=setting["experiment_id"],
         hash=hs,

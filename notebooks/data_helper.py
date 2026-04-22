@@ -94,41 +94,6 @@ def cache_df(run_ids: List[str], df=None):
     return df, hs
 
 
-def cache_df(run_ids: List[str], df=None):
-    """
-    This function takes a list of run ids and an optional dataframe.
-    It calculates the hash of the run ids and checks if a dataframe with the same hash already exists.
-    If it does, it reads the dataframe from the cache and returns it.
-    If it doesn't, it generates the dataframe using generate_df and saves it to the cache before returning it.
-
-    Args:
-        run_ids (List[str]): A list of run ids to generate the dataframe from.
-        df (pd.DataFrame, optional): An optional dataframe to use instead of generating a new one.
-
-    Returns:
-        pd.DataFrame: The generated dataframe.
-    """
-
-    # calculate hash
-    hs = generate_hash(run_ids)
-
-    # save df to cache
-    path = f".cache/{hs}/"
-    os.makedirs(path, exist_ok=True)
-
-    if os.path.exists(f"{path}df.csv"):
-        print(f"DF already exists: {hs}")
-        df = pd.read_csv(f"{path}df.csv")
-    else:
-        if df is None:
-            return generate_df(run_ids), hs
-        df.to_csv(f"{path}df.csv")
-        print(f"Created DF cache: {hs}")
-        df = pd.read_csv(f"{path}df.csv")
-
-    return df, hs
-
-
 def generate_df(run_ids: List[str]):
     """
     This function takes a list of run ids and generates a dataframe from them.
@@ -222,3 +187,21 @@ def generate_df(run_ids: List[str]):
 
     df = pd.DataFrame(rows)
     return df
+
+
+def export_csv(df: pd.DataFrame, name: str, experiment_id: str, hash: str):
+    """
+    Exports the given dataframe as a clean CSV file to the same folder
+    in which figures are stored.
+
+    Args:
+        df (pd.DataFrame): The dataframe to export.
+        name (str): The scenario name (e.g. 'study-1').
+        experiment_id (str): The experiment id.
+        hash (str): The hash of the run ids.
+    """
+    path = f"results/{experiment_id}/{hash}/"
+    os.makedirs(path, exist_ok=True)
+    filepath = f"{path}{name}.csv"
+    df.to_csv(filepath, index=False)
+    print(f"Exported CSV to {filepath}")
