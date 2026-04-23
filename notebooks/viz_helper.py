@@ -1016,11 +1016,10 @@ def loss_over_step(df: pd.DataFrame, show_error: bool = True):
 
             # Try common loss metric names
             hist_df = _collect_metric_history(subset, "train_mse")
-            if hist_df.empty:
-                hist_df = _collect_metric_history(subset, "loss")
+
             if hist_df.empty:
                 continue
-
+            
             steps = hist_df.index.values
             mean_vals = hist_df.mean(axis=1).values
             std_vals = hist_df.std(axis=1).values
