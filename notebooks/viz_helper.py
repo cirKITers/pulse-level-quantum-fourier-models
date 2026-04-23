@@ -847,32 +847,38 @@ def pulse_param_mse_comparison(
     step_mse_cache = {}
     if mse_step is not None:
         for _, row in df.iterrows():
-            for metric_name in ["train_mse", "loss"]:
-                steps = row.get(f"{metric_name}.steps")
-                values = row.get(f"{metric_name}.values")
-                if not isinstance(steps, (list, tuple, np.ndarray)):
-                    continue
-                if not isinstance(values, (list, tuple, np.ndarray)):
-                    continue
-                if len(steps) == 0:
-                    continue
-                step_map = dict(zip(list(steps), list(values)))
-                if mse_step in step_map:
-                    step_mse_cache[row["run_id"]] = step_map[mse_step]
-                else:
-                    valid_steps = [s for s in step_map if s <= mse_step]
-                    if valid_steps:
-                        step_mse_cache[row["run_id"]] = step_map[max(valid_steps)]
-                break  # found a metric for this run, stop trying alternatives
+            steps = row.get(f"{"train_mse"}.steps")
+            values = row.get(f"{"train_mse"}.values")
+            if not isinstance(steps, (list, tuple, np.ndarray)):
+                continue
+            if not isinstance(values, (list, tuple, np.ndarray)):
+                continue
+            if len(steps) == 0:
+                continue
+            step_map = dict(zip(list(steps), list(values)))
+            if mse_step in step_map:
+                step_mse_cache[row["run_id"]] = step_map[mse_step]
+            else:
+                valid_steps = [s for s in step_map if s <= mse_step]
+                if valid_steps:
+                    step_mse_cache[row["run_id"]] = step_map[max(valid_steps)]
 
     color_it = iter(design.prim_colors_lst)
-    for train_pulse, label in [(False, "Gate"), (True, "+ Pulse")]:
+    cases = [
+        (False, False, "Gate"),
+        (True, False, "+ Pulse"),
+        (False, True, "Decomposed"),
+    ]
+    for train_pulse, decompose_circuit, label in cases:
         color = next(color_it)
 
         means = []
         stds = []
         for ansatz in ansatzes:
-            subset = df[(df["ansatz"] == ansatz) & (df["train_pulse"] == train_pulse)]
+            subset = df[df["ansatz"] == ansatz]
+            subset = subset[subset["train_pulse"] == train_pulse]
+            if "model.decompose_circuit" in subset.columns:
+                subset = subset[subset["model.decompose_circuit"] == decompose_circuit]
 
             if mse_step is not None:
                 # Look up the MSE at the requested step for each run
