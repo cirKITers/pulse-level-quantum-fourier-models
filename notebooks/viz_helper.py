@@ -21,6 +21,42 @@ def sort_ansatzes(ansatzes):
     return sorted(ansatzes, key=_natural_sort_key)
 
 
+def _collect_metric_history(df: pd.DataFrame, metric_name: str) -> pd.DataFrame:
+    """Build a wide DataFrame of a per-step metric history.
+
+    Reads the list-valued columns ``<metric_name>.steps`` and
+    ``<metric_name>.values`` from the rows of ``df`` (one row per run) and
+    returns a DataFrame indexed by step with one column per run_id.  Rows
+    that do not carry the metric are skipped.  If no row carries it, an
+    empty DataFrame is returned.
+    """
+    steps_col = f"{metric_name}.steps"
+    values_col = f"{metric_name}.values"
+
+    if steps_col not in df.columns or values_col not in df.columns:
+        return pd.DataFrame()
+
+    series_by_run = {}
+    for _, row in df.iterrows():
+        steps = row.get(steps_col)
+        values = row.get(values_col)
+        # List-valued columns may be NaN for runs that do not log this metric
+        if not isinstance(steps, (list, tuple, np.ndarray)):
+            continue
+        if not isinstance(values, (list, tuple, np.ndarray)):
+            continue
+        if len(steps) == 0:
+            continue
+        series_by_run[row["run_id"]] = pd.Series(
+            data=list(values), index=list(steps)
+        )
+
+    if not series_by_run:
+        return pd.DataFrame()
+
+    return pd.DataFrame(series_by_run).sort_index()
+
+
 class design:
     template = "plotly_white"
     font_size = 22
@@ -129,14 +165,14 @@ def viz_study_3(df, max_distortion, show_error):
     return figures
 
 
-def viz_study_4(df, show_error, mse_step=None, df_stepwise=None):
+def viz_study_4(df, show_error, mse_step=None):
     figures = []
 
     figures.append(
-        pulse_param_mse_comparison(df, show_error, mse_step=mse_step, df_stepwise=df_stepwise)
+        pulse_param_mse_comparison(df, show_error, mse_step=mse_step)
     )
-    figures.extend(pulse_mean_and_variance_over_step(df, show_error, df_stepwise=df_stepwise))
-    figures.append(loss_over_step(df, show_error, df_stepwise=df_stepwise))
+    figures.extend(pulse_mean_and_variance_over_step(df, show_error))
+    figures.append(loss_over_step(df, show_error))
 
     return figures
 
@@ -775,7 +811,6 @@ def pulse_param_mse_comparison(
     df: pd.DataFrame,
     show_error: bool = True,
     mse_step: int = None,
-    df_stepwise: pd.DataFrame = None,
 ):
     """
     Compare the train MSE across circuits for train_pulse=True vs False.
@@ -784,13 +819,13 @@ def pulse_param_mse_comparison(
 
     Args:
         df (pd.DataFrame): DataFrame with columns "ansatz", "train_pulse",
-            "train_mse", "run_id", and "data.seed".
+            "train_mse", "run_id", and "data.seed".  For ``mse_step`` lookup,
+            the list-valued columns ``train_mse.steps``/``train_mse.values``
+            (or ``loss.*``) are read from ``df`` directly.
         show_error (bool): Whether to display error bars. Defaults to True.
         mse_step (int, optional): The training step at which to evaluate the
             MSE. If None, uses the final ``train_mse`` metric stored in the
-            run summary. If specified, looks up the value from df_stepwise.
-        df_stepwise (pd.DataFrame, optional): Long-format DataFrame with
-            columns run_id, step, metric, value. Required when mse_step is set.
+            run summary.
 
     Returns:
         go.Figure: The plotly figure.
@@ -807,24 +842,27 @@ def pulse_param_mse_comparison(
     )
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
-    # If a specific step is requested, build per-run lookup from stepwise data
+    # If a specific step is requested, build per-run lookup from the
+    # list-valued step/value columns stored in ``df``.
     step_mse_cache = {}
-    if mse_step is not None and df_stepwise is not None and not df_stepwise.empty:
-        # Filter to train_mse first, fall back to loss per run
-        for run_id in df["run_id"].values:
-            run_metrics = df_stepwise[df_stepwise["run_id"] == run_id]
-            # Prefer train_mse, fall back to loss
+    if mse_step is not None:
+        for _, row in df.iterrows():
             for metric_name in ["train_mse", "loss"]:
-                metric_df = run_metrics[run_metrics["metric"] == metric_name]
-                if metric_df.empty:
+                steps = row.get(f"{metric_name}.steps")
+                values = row.get(f"{metric_name}.values")
+                if not isinstance(steps, (list, tuple, np.ndarray)):
                     continue
-                step_map = dict(zip(metric_df["step"].values, metric_df["value"].values))
+                if not isinstance(values, (list, tuple, np.ndarray)):
+                    continue
+                if len(steps) == 0:
+                    continue
+                step_map = dict(zip(list(steps), list(values)))
                 if mse_step in step_map:
-                    step_mse_cache[run_id] = step_map[mse_step]
+                    step_mse_cache[row["run_id"]] = step_map[mse_step]
                 else:
                     valid_steps = [s for s in step_map if s <= mse_step]
                     if valid_steps:
-                        step_mse_cache[run_id] = step_map[max(valid_steps)]
+                        step_mse_cache[row["run_id"]] = step_map[max(valid_steps)]
                 break  # found a metric for this run, stop trying alternatives
 
     color_it = iter(design.prim_colors_lst)
@@ -872,20 +910,20 @@ def pulse_param_mse_comparison(
 
 
 def pulse_mean_and_variance_over_step(
-    df: pd.DataFrame, show_error: bool = True, df_stepwise: pd.DataFrame = None
+    df: pd.DataFrame, show_error: bool = True
 ):
     """
     Visualize how pulse_scaler_mean and pulse_scaler_std evolve over training
-    steps.  For each ansatz the per-step metric data is read from df_stepwise,
-    averaged over seeds, and plotted with optional error bars.
+    steps.  For each ansatz the per-step metric data is read from the
+    list-valued columns on ``df`` itself, averaged over seeds, and plotted
+    with optional error bars.
 
     Args:
-        df (pd.DataFrame): DataFrame with columns "run_id", "ansatz", and
-            "train_pulse".  Only rows where train_pulse is True are considered.
+        df (pd.DataFrame): DataFrame with columns "run_id", "ansatz",
+            "train_pulse" and the list-valued step/value columns produced
+            by ``generate_df``.  Only rows where train_pulse is True are
+            considered.
         show_error (bool): Whether to display error bars (std over seeds).
-        df_stepwise (pd.DataFrame, optional): Long-format DataFrame with
-            columns run_id, step, metric, value containing pre-fetched
-            step-wise metrics.
 
     Returns:
         tuple[go.Figure, go.Figure]: Two figures – one for pulse_scaler_mean
@@ -895,21 +933,6 @@ def pulse_mean_and_variance_over_step(
     filtered_df = df[df["train_pulse"] == True]  # noqa: E712
 
     ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
-
-    def _collect_metric_history(ansatz_df, metric_name):
-        """Return a DataFrame with columns 'step' and one column per run."""
-        if df_stepwise is None or df_stepwise.empty:
-            return pd.DataFrame()
-        run_ids = set(ansatz_df["run_id"].values)
-        metric_df = df_stepwise[
-            (df_stepwise["run_id"].isin(run_ids))
-            & (df_stepwise["metric"] == metric_name)
-        ]
-        if metric_df.empty:
-            return pd.DataFrame()
-        hist_df = metric_df.pivot(index="step", columns="run_id", values="value")
-        hist_df = hist_df.sort_index()
-        return hist_df
 
     figures = []
     for metric_name, y_label, title in [
@@ -975,40 +998,24 @@ def pulse_mean_and_variance_over_step(
 
 
 def loss_over_step(
-    df: pd.DataFrame, show_error: bool = True, df_stepwise: pd.DataFrame = None
+    df: pd.DataFrame, show_error: bool = True
 ):
     """
     Visualize how the training loss evolves over training steps for each ansatz.
-    For each ansatz the per-step metric data is read from df_stepwise,
-    averaged over seeds, and plotted with optional error bars.
+    For each ansatz the per-step metric data is read from the list-valued
+    columns on ``df`` itself, averaged over seeds, and plotted with optional
+    error bars.
 
     Args:
-        df (pd.DataFrame): DataFrame with columns "run_id", "ansatz", and
-            "train_pulse".
+        df (pd.DataFrame): DataFrame with columns "run_id", "ansatz",
+            "train_pulse" and the list-valued step/value columns produced
+            by ``generate_df``.
         show_error (bool): Whether to display error bars (std over seeds).
-        df_stepwise (pd.DataFrame, optional): Long-format DataFrame with
-            columns run_id, step, metric, value containing pre-fetched
-            step-wise metrics.
 
     Returns:
         go.Figure: A figure showing loss over training steps.
     """
     ansatzes = sort_ansatzes(df["ansatz"].unique())
-
-    def _collect_metric_history(ansatz_df, metric_name):
-        """Return a DataFrame with columns 'step' and one column per run."""
-        if df_stepwise is None or df_stepwise.empty:
-            return pd.DataFrame()
-        run_ids = set(ansatz_df["run_id"].values)
-        metric_df = df_stepwise[
-            (df_stepwise["run_id"].isin(run_ids))
-            & (df_stepwise["metric"] == metric_name)
-        ]
-        if metric_df.empty:
-            return pd.DataFrame()
-        hist_df = metric_df.pivot(index="step", columns="run_id", values="value")
-        hist_df = hist_df.sort_index()
-        return hist_df
 
     fig = go.Figure()
     color_it = iter(design.prim_colors_lst)
@@ -1026,9 +1033,11 @@ def loss_over_step(
             if subset.empty:
                 continue
 
-            # Try common loss metric names
+            # Try common loss metric names; both live as list-valued columns
+            # on ``subset`` now.
             hist_df = _collect_metric_history(subset, "train_mse")
-
+            if hist_df.empty:
+                hist_df = _collect_metric_history(subset, "loss")
             if hist_df.empty:
                 continue
             
