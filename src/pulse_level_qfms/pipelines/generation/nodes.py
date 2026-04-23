@@ -1,6 +1,6 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Datasets
-from qml_essentials.ansaetze import Ansaetze, Circuit, DeclarativeCircuit, Block, Encoding
+from qml_essentials.ansaetze import Ansaetze, Circuit, Block, Encoding
 from qml_essentials.gates import Gates, PulseInformation
 
 from typing import List, Dict, Tuple, Union, Callable, Optional
@@ -22,28 +22,29 @@ jax.config.update("jax_enable_x64", True)
 
 
 @dataclass
-class LeaveGate:
-    """A single leaf-level gate produced by recursively flattening a
+class LeafStep:
+    """A single leaf-level gate produced by flattening a
     :class:`PulseParams` decomposition tree.
+
+    The angle seen by the gate is ``scaler * fixed_value`` where ``scaler``
+    is a trainable parameter.  For *fixed* steps, ``fixed_value`` encodes a
+    structural constant (e.g. ``pi/2`` from a Hadamard decomposition); at
+    ``scaler == 1.0`` the gate matches the original decomposition.  For
+    *free* steps (angle depends on the parent's ``w``) ``fixed_value`` is
+    ``1.0`` so that the scaler is itself the trainable rotation angle.
 
     Attributes
     ----------
     gate_name : str
-        Gates name, e.g. ``"RZ"``, ``"CZ"``.
+        Basis gate name (e.g. ``"RZ"``, ``"CPhase"``).
     wire_fn : str
-        Wire selector inherited from the decomposition hierarchy:
-        ``"all"``, ``"target"``, or ``"control"``.
+        Wire selector ``"all"`` / ``"target"`` / ``"control"``.
     has_param : bool
-        Whether this gate takes a rotation angle.
+        Whether this gate consumes one element of ``w``.
     is_fixed : bool
-        ``True`` when the rotation angle is a structural constant
-        (independent of the original gate parameter *w*).
-        These slots should be initialised to 1.0 (scaler).
+        True for structural-constant angles (scaler initialised to 1.0).
     fixed_value : float
-        The numerical value of the fixed angle.  Only meaningful when
-        ``is_fixed is True``.  For free parameters ``fixed_value`` is
-        set to ``1.0`` so that ``scaler * fixed_value`` equals the
-        trainable angle directly.
+        See class docstring.  Zero when ``has_param`` is False.
     """
 
     gate_name: str
@@ -53,118 +54,76 @@ class LeaveGate:
     fixed_value: float = 1.0
 
 
-def _flatten_pulse_params(pp, parent_wire_fn: str = "all"):
-    """Recursively flatten a :class:`PulseParams` tree into leaf-level steps.
+def _flatten_decomposition(
+    pp, parent_wire_fn: str = "all", angle_chain: Optional[Callable] = None
+) -> List[LeafStep]:
+    """Walk a :class:`PulseParams` tree top-down and return leaf-level
+    steps, classifying each parameterised step as fixed or free.
 
-    Returns a list of ``(FlatStep, angle_chain)`` pairs where *angle_chain*
-    is a composed callable mapping the original gate parameter ``w`` all
-    the way down to the angle seen by the leaf gate.
+    ``angle_chain`` is the composition of all ``angle_fn`` encountered on
+    the path from the root; probing it at two distinct ``w`` values tells
+    us whether the effective angle still depends on ``w`` (free) or is
+    constant (structural scaler).
     """
+    # Leaf: emit a LeafStep.
     if pp.is_leaf:
-        # Replace CZ with CPhase(π) so that the controlled-phase angle
-        # becomes a trainable scaler parameter.  At scaler=1.0 the gate
-        # is identical to CZ.
+        # CZ → CPhase(π) so the phase becomes a trainable scaler
+        # (identical to CZ when scaler == 1.0).
         if pp.name == "CZ":
-            return [
-                (
-                    LeaveGate(
-                        gate_name="CPhase",
-                        wire_fn=parent_wire_fn,
-                        has_param=True,
-                    ),
-                    lambda _w: jnp.pi,  # constant π, independent of w
-                )
-            ]
+            return [LeafStep("CPhase", parent_wire_fn, True, True, float(jnp.pi))]
+        if pp.name not in ("RX", "RY", "RZ"):
+            return [LeafStep(pp.name, parent_wire_fn, False, False, 0.0)]
 
-        has_param = pp.name in ("RX", "RY", "RZ")
-        return [
-            (
-                LeaveGate(
-                    gate_name=pp.name,
-                    wire_fn=parent_wire_fn,
-                    has_param=has_param,
-                ),
-                lambda w: w,
-            )
-        ]
-
-    results = []
-    for step in pp.decomposition:
-        # Resolve wire context: a child's "all" inherits parent's specificity
-        eff_wire = step.wire_fn
-        if parent_wire_fn != "all" and step.wire_fn == "all":
-            eff_wire = parent_wire_fn
-
-        sub = _flatten_pulse_params(step.gate, eff_wire)
-
-        for flat_step, child_fn in sub:
-            if step.angle_fn is not None:
-                outer_fn = step.angle_fn
-
-                def composed(w, _outer=outer_fn, _inner=child_fn):
-                    return _inner(_outer(w))
-
-                results.append((flat_step, composed))
-            else:
-                results.append((flat_step, child_fn))
-    return results
-
-
-def _classify_flat_steps(pp) -> List[LeaveGate]:
-    """Flatten a :class:`PulseParams` tree and classify each parameterised
-    step as *fixed* (structural scaler) or *free* (depends on the original
-    gate angle ``w``).
-    """
-    raw = _flatten_pulse_params(pp)
-    classified: List[LeaveGate] = []
-    for flat_step, angle_chain in raw:
-        if not flat_step.has_param:
-            flat_step.is_fixed = False
-            flat_step.fixed_value = 0.0
-            classified.append(flat_step)
-            continue
-        # Probe with two different w values to check dependence.
-        # Some gates (e.g. Rot) expect w to be a list/array, so we
-        # try both scalar and array probes.
+        # Parameterised leaf: classify by probing the composed angle chain.
+        if angle_chain is None:
+            return [LeafStep(pp.name, parent_wire_fn, True, False, 1.0)]
         try:
-            v1 = float(angle_chain(1.0))
-            v2 = float(angle_chain(2.0))
+            v1, v2 = float(angle_chain(1.0)), float(angle_chain(2.0))
         except (TypeError, IndexError):
-            # angle_fn expects an indexable w (e.g. Rot: lambda w: w[0])
+            # e.g. Rot-style angle_fn expecting an indexable w
             v1 = float(angle_chain([1.0, 2.0, 3.0]))
             v2 = float(angle_chain([4.0, 5.0, 6.0]))
         if abs(v1 - v2) < 1e-12:
-            flat_step.is_fixed = True
-            flat_step.fixed_value = v1
+            return [LeafStep(pp.name, parent_wire_fn, True, True, v1)]
+        return [LeafStep(pp.name, parent_wire_fn, True, False, 1.0)]
+
+    # Composite: descend into each DecompositionStep.
+    steps: List[LeafStep] = []
+    for step in pp.decomposition:
+        # A child's "all" inherits the parent's wire specificity.
+        eff_wire = (
+            step.wire_fn
+            if (step.wire_fn != "all" or parent_wire_fn == "all")
+            else parent_wire_fn
+        )
+        # Compose angle: new_chain(w) = step.angle_fn(angle_chain(w)).
+        if step.angle_fn is None:
+            next_chain = angle_chain
+        elif angle_chain is None:
+            next_chain = step.angle_fn
         else:
-            flat_step.is_fixed = False
-            flat_step.fixed_value = 1.0
-        classified.append(flat_step)
-    return classified
+            next_chain = (
+                lambda w, _f=step.angle_fn, _c=angle_chain: _f(_c(w))
+            )
+        steps.extend(_flatten_decomposition(step.gate, eff_wire, next_chain))
+    return steps
 
 
 @dataclass
 class DecomposedBlock:
-    """Stores the flat decomposition for one :class:`Block` of the original
-    circuit, together with the topology / iteration metadata needed to
-    replay the gates in :meth:`DecomposedCircuit.build`.
+    """One original :class:`Block` paired with its flat leaf-level
+    decomposition.  Empty ``flat_steps`` means the block is already a
+    basis gate and should be applied via :meth:`Block.apply` unchanged.
     """
 
     original_block: Block
-    flat_steps: List[LeaveGate] = field(default_factory=list)
-
-    @property
-    def n_param_steps(self) -> int:
-        """Number of parameterised leaf steps (each consumes one ``w`` entry
-        per wire-set)."""
-        return sum(1 for s in self.flat_steps if s.has_param)
+    flat_steps: List[LeafStep] = field(default_factory=list)
 
 
 def _resolve_wires(wire_fn: str, wires) -> Union[int, list]:
-    """Map ``"all"`` / ``"target"`` / ``"control"`` to actual qubit indices.
+    """Map ``"all"`` / ``"target"`` / ``"control"`` to qubit indices.
 
-    ``wires`` is either an ``int`` (single-qubit gate) or a tuple/list
-    ``(control, target)`` for two-qubit gates.
+    Mirrors :meth:`qml_essentials.pulses.PulseGates._resolve_wires`.
     """
     if isinstance(wires, int):
         return wires
@@ -182,73 +141,79 @@ class DecomposedCircuit(Circuit):
     """A :class:`Circuit` whose gates are replaced by their basis-gate
     decomposition derived from :class:`PulseInformation`.
 
-    For every decomposed gate that carries a *numeric* predefined parameter
-    (e.g. ``pi/2`` from a Hadamard decomposition) a trainable scaler
-    parameter is introduced so that the effective angle becomes
-    ``scaler * fixed_value``.  For decomposition steps whose parameter
-    depends on the original gate's angle (``w``) the scaler directly
-    acts as the full trainable angle (``fixed_value = 1.0``).
+    For every decomposed gate step that carries a *numeric* predefined
+    parameter (e.g. ``pi/2`` from a Hadamard decomposition) a trainable
+    scaler is introduced such that the effective angle becomes
+    ``scaler * fixed_value``.  For steps whose parameter depends on the
+    original gate's angle (``w``) the scaler is itself the trainable
+    angle (``fixed_value = 1.0``).
 
-    With all scalers equal to ``1.0`` the decomposed circuit is functionally
-    equivalent to the original one.
+    With all scalers equal to ``1.0`` the decomposed circuit is
+    functionally equivalent to the original one.
     """
 
-    def __init__(
-        self,
-        decomposed_blocks: List[DecomposedBlock],
-    ) -> None:
+    def __init__(self, decomposed_blocks: List[DecomposedBlock]) -> None:
         super().__init__()
         self._decomposed_blocks = decomposed_blocks
 
+    # --- single source of truth: iterate the structure once --------------
+    def _iter_wire_sets(self, block: Block, n_qubits: int):
+        """Yield the wire-sets a block acts on (or nothing if skipped)."""
+        if block.is_entangling:
+            if not block.enough_qubits(n_qubits):
+                return
+            yield from block.topology(n_qubits=n_qubits, **block.kwargs)
+        else:
+            yield from range(n_qubits)
 
     def n_params_per_layer(self, n_qubits: int) -> int:
         total = 0
         for db in self._decomposed_blocks:
-            block = db.original_block
-            if db.flat_steps:
-                # Decomposed: one w entry per parameterised step per wire-set
-                if block.is_entangling:
-                    if not block.enough_qubits(n_qubits):
-                        continue
-                    n_wires = len(
-                        block.topology(n_qubits=n_qubits, **block.kwargs)
-                    )
-                else:
-                    n_wires = n_qubits
-                total += db.n_param_steps * n_wires
-            else:
-                # Undecomposed: delegate to original block
-                total += block.n_params(n_qubits)
+            if not db.flat_steps:
+                total += db.original_block.n_params(n_qubits)
+                continue
+            n_param_steps = sum(1 for s in db.flat_steps if s.has_param)
+            total += n_param_steps * sum(
+                1 for _ in self._iter_wire_sets(db.original_block, n_qubits)
+            )
         return total
 
     def n_pulse_params_per_layer(self, n_qubits: int) -> int:
-        # Decomposed circuit uses only unitary basis gates;
-        # pulse params are not meaningful.
+        # Decomposed circuit uses only unitary basis gates.
         return 0
 
     def get_control_indices(self, n_qubits: int) -> Optional[List[int]]:
-        # After decomposition there are no controlled-rotation gates in
-        # the traditional sense.
+        # No controlled rotations remain after decomposition.
         return None
+
+    def scaler_mask(self, n_qubits: int) -> jnp.ndarray:
+        """Boolean mask of ``n_params_per_layer`` slots; ``True`` where the
+        slot is a structural scaler (should be initialised to ``1.0``)."""
+        mask: List[bool] = []
+        for db in self._decomposed_blocks:
+            if not db.flat_steps:
+                # Undecomposed: all slots are free parameters.
+                mask.extend([False] * db.original_block.n_params(n_qubits))
+                continue
+            for _ in self._iter_wire_sets(db.original_block, n_qubits):
+                for s in db.flat_steps:
+                    if s.has_param:
+                        mask.append(s.is_fixed)
+        return jnp.array(mask, dtype=bool)
 
     def build(self, w, n_qubits: int, **kwargs) -> None:
         w_idx = 0
         for db in self._decomposed_blocks:
             block = db.original_block
 
-            if db.flat_steps:
-                # decomposed block
-                iterator = (
-                    block.topology(n_qubits=n_qubits, **block.kwargs)
-                    if block.is_entangling
-                    else range(n_qubits)
-                )
-                for wires in iterator:
-                    if block.is_entangling and not block.enough_qubits(n_qubits):
-                        continue
+            if not db.flat_steps:
+                # Already a basis gate -- delegate to the original Block.
+                w_idx = block.apply(n_qubits, w, w_idx, **kwargs)
+            else:
+                for wires in self._iter_wire_sets(block, n_qubits):
                     for step in db.flat_steps:
-                        step_wires = _resolve_wires(step.wire_fn, wires)
                         gate_fn = getattr(Gates, step.gate_name)
+                        step_wires = _resolve_wires(step.wire_fn, wires)
                         if step.has_param:
                             gate_fn(
                                 w[w_idx] * step.fixed_value,
@@ -258,141 +223,35 @@ class DecomposedCircuit(Circuit):
                             w_idx += 1
                         else:
                             gate_fn(wires=step_wires, **kwargs)
-            else:
-                # undecomposed block (no known decomposition)
-                w_idx = block.apply(n_qubits, w, w_idx, **kwargs)
 
             Gates.Barrier(wires=list(range(n_qubits)), **kwargs)
 
 
-
-def _build_decomposed_blocks(
-    structure: tuple,
-) -> Tuple[List[DecomposedBlock], List[bool]]:
-    """Analyse an original circuit's ``structure()`` and build decomposed blocks.
-
-    Returns
-    -------
-    decomposed_blocks : list[DecomposedBlock]
-        One entry per original block.
-    scaler_mask_per_step : list[bool]
-        Flat list -- ``True`` for every parameterised step that is a
-        structural scaler (one entry per step, *not* yet expanded by
-        the number of wire-sets).
+def _build_decomposed_blocks(structure: tuple) -> List[DecomposedBlock]:
+    """Analyse an original circuit's ``structure()`` and return the
+    corresponding :class:`DecomposedBlock` list.
     """
-    decomposed_blocks: List[DecomposedBlock] = []
-    scaler_mask_per_step: List[bool] = []
-
+    blocks: List[DecomposedBlock] = []
     for block in structure:
-        gate_name = block.gate.__name__
-        pulse_pp = PulseInformation.gate_by_name(gate_name)
-
-        if pulse_pp is not None and not pulse_pp.is_leaf:
-            flat = _classify_flat_steps(pulse_pp)
-            db = DecomposedBlock(original_block=block, flat_steps=flat)
-            decomposed_blocks.append(db)
-            for s in flat:
-                if s.has_param:
-                    scaler_mask_per_step.append(s.is_fixed)
-        else:
-            # No decomposition available -- already a basis gate
-            db = DecomposedBlock(original_block=block, flat_steps=[])
-            decomposed_blocks.append(db)
-            # Original block params are free (not scalers)
-            n_per_wire = (
-                3
-                if block.gate.__name__ == "Rot"
-                else (1 if block.is_rotational else 0)
-            )
-            scaler_mask_per_step.extend([False] * n_per_wire)
-
-    return decomposed_blocks, scaler_mask_per_step
-
-
-def _expand_scaler_mask(
-    decomposed_blocks: List[DecomposedBlock],
-    scaler_mask_per_step: List[bool],
-    n_qubits: int,
-) -> jnp.ndarray:
-    """Expand the per-step scaler mask to the full flat parameter vector.
-
-    Each parameterised step is repeated once per wire-set (qubit or
-    entangling pair), matching the layout of ``w`` consumed by
-    :meth:`DecomposedCircuit.build`.
-    """
-    full_mask: List[bool] = []
-    step_idx = 0
-    for db in decomposed_blocks:
-        block = db.original_block
-        if db.flat_steps:
-            if block.is_entangling:
-                if not block.enough_qubits(n_qubits):
-                    # Skip but still advance step_idx
-                    step_idx += db.n_param_steps
-                    continue
-                n_wires = len(
-                    block.topology(n_qubits=n_qubits, **block.kwargs)
-                )
-            else:
-                n_wires = n_qubits
-            for s in db.flat_steps:
-                if s.has_param:
-                    full_mask.extend(
-                        [scaler_mask_per_step[step_idx]] * n_wires
-                    )
-                    step_idx += 1
-        else:
-            n_per_wire = (
-                3
-                if block.gate.__name__ == "Rot"
-                else (1 if block.is_rotational else 0)
-            )
-            if block.is_entangling:
-                if not block.enough_qubits(n_qubits):
-                    step_idx += n_per_wire
-                    continue
-                n_wires = len(
-                    block.topology(n_qubits=n_qubits, **block.kwargs)
-                )
-            else:
-                n_wires = n_qubits
-            for _ in range(n_per_wire):
-                full_mask.extend(
-                    [scaler_mask_per_step[step_idx]] * n_wires
-                )
-                step_idx += 1
-
-    return jnp.array(full_mask, dtype=bool)
+        pulse_pp = PulseInformation.gate_by_name(block.gate.__name__)
+        flat_steps = (
+            _flatten_decomposition(pulse_pp)
+            if (pulse_pp is not None and not pulse_pp.is_leaf)
+            else []
+        )
+        blocks.append(DecomposedBlock(original_block=block, flat_steps=flat_steps))
+    return blocks
 
 
 def _make_decomposed_circuit_class(
-    structure: tuple,
-    n_qubits: int,
+    structure: tuple, n_qubits: int
 ) -> Tuple[type, jnp.ndarray]:
     """Create a :class:`DecomposedCircuit` sub-class and its scaler mask.
 
-    Parameters
-    ----------
-    structure : tuple[Block, ...]
-        The ``structure()`` of the original :class:`DeclarativeCircuit`.
-    n_qubits : int
-        Number of qubits (needed to expand the mask over wire-sets).
-
-    Returns
-    -------
-    circuit_cls : type
-        A :class:`DecomposedCircuit` sub-class that :class:`Model` can
-        instantiate with ``circuit_cls()``.
-    scaler_mask : jnp.ndarray
-        Boolean array of shape ``(n_params_per_layer,)`` -- ``True`` for
-        every parameter slot that is a structural scaler.
+    The mask is computed by the circuit itself to guarantee consistency
+    with :meth:`DecomposedCircuit.build` / :meth:`n_params_per_layer`.
     """
-    decomposed_blocks, scaler_mask_per_step = _build_decomposed_blocks(
-        structure
-    )
-    scaler_mask = _expand_scaler_mask(
-        decomposed_blocks, scaler_mask_per_step, n_qubits
-    )
+    decomposed_blocks = _build_decomposed_blocks(structure)
 
     class _Decomposed(DecomposedCircuit):
         def __init__(self):
@@ -400,6 +259,8 @@ def _make_decomposed_circuit_class(
 
     _Decomposed.__name__ = "DecomposedCircuit"
     _Decomposed.__qualname__ = "DecomposedCircuit"
+
+    scaler_mask = _Decomposed().scaler_mask(n_qubits)
     return _Decomposed, scaler_mask
 
 
@@ -410,8 +271,9 @@ def _apply_scaler_mask(model: Model, scaler_mask: jnp.ndarray) -> None:
     across the batch and layer dimensions of ``model.params``.
     """
     # model.params shape: (batch, n_layers, n_params_per_layer)
-    mask_bc = scaler_mask[jnp.newaxis, jnp.newaxis, :]  # (1, 1, P)
-    model.params = jnp.where(mask_bc, 1.0, model.params)
+    model.params = jnp.where(
+        scaler_mask[jnp.newaxis, jnp.newaxis, :], 1.0, model.params
+    )
 
 
 
