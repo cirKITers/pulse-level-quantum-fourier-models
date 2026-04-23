@@ -11,13 +11,13 @@
 #
 # expected duration of the job
 #              hh:mm:ss
-#SBATCH --time=16:00:00
+#SBATCH --time=20:00:00
 # 
 # partition the job will run on
 #SBATCH --partition cpu
 # 
 # expected memory requirements
-#SBATCH --mem=48GB
+#SBATCH --mem=120GB
 #
 # infos
 #
@@ -28,7 +28,8 @@ module load compiler/llvm
 module load devel/python/3.12.3
 
 cd ~/pulse-level-quantum-fourier-models
-# source ./scripts/study-1.sh # FCC
-source ./scripts/study-2.sh # Fidelity
+source ./scripts/study-1.sh # FCC
+# source ./scripts/study-2.sh # Fidelity
 # source ./scripts/study-3.sh # Expressibility
 # source ./scripts/study-4.sh # Training
+    

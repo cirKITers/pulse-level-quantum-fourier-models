@@ -28,7 +28,7 @@ model:
     Depolarizing: 0.0
 
 train:
-  steps: 1000
+  steps: 2000
   learning_rate: 1e-3
   pulse_learning_rate: 1e-5 
   batch_size: -1
