@@ -30,7 +30,7 @@ model:
 train:
   steps: 2000
   learning_rate: 1e-3
-  pulse_learning_rate: 1e-5 
+  pulse_learning_rate: 1e-3 
   batch_size: -1
   loss_functions: ["mse"]
   loss_scalers: [1.0]
