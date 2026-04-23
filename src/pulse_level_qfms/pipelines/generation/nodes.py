@@ -26,12 +26,23 @@ class LeafStep:
     """A single leaf-level gate produced by flattening a
     :class:`PulseParams` decomposition tree.
 
-    The angle seen by the gate is ``scaler * fixed_value`` where ``scaler``
-    is a trainable parameter.  For *fixed* steps, ``fixed_value`` encodes a
-    structural constant (e.g. ``pi/2`` from a Hadamard decomposition); at
-    ``scaler == 1.0`` the gate matches the original decomposition.  For
-    *free* steps (angle depends on the parent's ``w``) ``fixed_value`` is
-    ``1.0`` so that the scaler is itself the trainable rotation angle.
+    Two kinds of leaf steps exist:
+
+    * **Fixed** (``is_fixed=True``): the decomposition angle is a structural
+      constant (e.g. ``π/2`` from a Hadamard).  The effective angle at
+      build time is ``scaler * fixed_value`` where ``scaler`` is a
+      trainable parameter initialised to ``1.0``.  At init the gate
+      reproduces the decomposition exactly.
+
+    * **Free** (``is_fixed=False``): the decomposition angle depends on
+      the *original* gate's rotation parameter ``w`` via a composed
+      ``angle_chain``.  At build time the angle is ``angle_chain(w_orig)``
+      where ``w_orig`` is the **single** trainable parameter (or triple,
+      for :class:`Rot`) associated with the parent block -- it is
+      *shared* across all free steps of the same decomposition.
+
+    * **No-param** (``has_param=False``): leaf gate carries no rotation
+      angle (e.g. ``CZ``/``CX`` when they appear as basis gates).
 
     Attributes
     ----------
@@ -40,11 +51,15 @@ class LeafStep:
     wire_fn : str
         Wire selector ``"all"`` / ``"target"`` / ``"control"``.
     has_param : bool
-        Whether this gate consumes one element of ``w``.
+        Whether this gate takes a rotation angle argument.
     is_fixed : bool
-        True for structural-constant angles (scaler initialised to 1.0).
+        True ⇒ angle = scaler * fixed_value.  False ⇒ angle =
+        angle_chain(w_orig).
     fixed_value : float
-        See class docstring.  Zero when ``has_param`` is False.
+        Structural constant for fixed steps.  Unused otherwise.
+    angle_chain : Optional[Callable]
+        Composition of all parent ``angle_fn``s for free steps, mapping
+        the original gate's ``w`` to this leaf's rotation angle.
     """
 
     gate_name: str
@@ -52,31 +67,37 @@ class LeafStep:
     has_param: bool
     is_fixed: bool = False
     fixed_value: float = 1.0
+    angle_chain: Optional[Callable] = None
 
 
 def _flatten_decomposition(
     pp, parent_wire_fn: str = "all", angle_chain: Optional[Callable] = None
 ) -> List[LeafStep]:
-    """Walk a :class:`PulseParams` tree top-down and return leaf-level
-    steps, classifying each parameterised step as fixed or free.
+    """Walk a :class:`PulseParams` tree top-down and emit leaf-level steps.
 
     ``angle_chain`` is the composition of all ``angle_fn`` encountered on
     the path from the root; probing it at two distinct ``w`` values tells
-    us whether the effective angle still depends on ``w`` (free) or is
-    constant (structural scaler).
+    us whether the effective angle is a structural constant (*fixed*) or
+    still depends on the parent's ``w`` (*free*).  For free steps the
+    chain itself is stored so that :meth:`DecomposedCircuit.build` can
+    reproduce the original ``w`` → leaf-angle mapping with a single
+    shared ``w`` per parent block.
     """
     # Leaf: emit a LeafStep.
     if pp.is_leaf:
         # CZ → CPhase(π) so the phase becomes a trainable scaler
         # (identical to CZ when scaler == 1.0).
-        if pp.name == "CZ":
-            return [LeafStep("CPhase", parent_wire_fn, True, True, float(jnp.pi))]
+        # if pp.name == "CZ":
+        #     return [LeafStep("CPhase", parent_wire_fn, True, True, float(jnp.pi))]
         if pp.name not in ("RX", "RY", "RZ"):
-            return [LeafStep(pp.name, parent_wire_fn, False, False, 0.0)]
+            return [LeafStep(pp.name, parent_wire_fn, False)]
 
         # Parameterised leaf: classify by probing the composed angle chain.
         if angle_chain is None:
-            return [LeafStep(pp.name, parent_wire_fn, True, False, 1.0)]
+            # RX/RY/RZ appearing *as* the root block -- pure passthrough.
+            return [
+                LeafStep(pp.name, parent_wire_fn, True, False, 1.0, lambda w: w)
+            ]
         try:
             v1, v2 = float(angle_chain(1.0)), float(angle_chain(2.0))
         except (TypeError, IndexError):
@@ -85,7 +106,9 @@ def _flatten_decomposition(
             v2 = float(angle_chain([4.0, 5.0, 6.0]))
         if abs(v1 - v2) < 1e-12:
             return [LeafStep(pp.name, parent_wire_fn, True, True, v1)]
-        return [LeafStep(pp.name, parent_wire_fn, True, False, 1.0)]
+        return [
+            LeafStep(pp.name, parent_wire_fn, True, False, 1.0, angle_chain)
+        ]
 
     # Composite: descend into each DecompositionStep.
     steps: List[LeafStep] = []
@@ -112,12 +135,12 @@ def _flatten_decomposition(
 @dataclass
 class DecomposedBlock:
     """One original :class:`Block` paired with its flat leaf-level
-    decomposition.  Empty ``flat_steps`` means the block is already a
+    decomposition.  Empty ``leaf_steps`` means the block is already a
     basis gate and should be applied via :meth:`Block.apply` unchanged.
     """
 
     original_block: Block
-    flat_steps: List[LeafStep] = field(default_factory=list)
+    leaf_steps: List[LeafStep] = field(default_factory=list)
 
 
 def _resolve_wires(wire_fn: str, wires) -> Union[int, list]:
@@ -141,22 +164,41 @@ class DecomposedCircuit(Circuit):
     """A :class:`Circuit` whose gates are replaced by their basis-gate
     decomposition derived from :class:`PulseInformation`.
 
-    For every decomposed gate step that carries a *numeric* predefined
-    parameter (e.g. ``pi/2`` from a Hadamard decomposition) a trainable
-    scaler is introduced such that the effective angle becomes
-    ``scaler * fixed_value``.  For steps whose parameter depends on the
-    original gate's angle (``w``) the scaler is itself the trainable
-    angle (``fixed_value = 1.0``).
+    Layout per wire-set of an originally parameterised block
+    (``RX``/``CRX``/``Rot``/…):
 
-    With all scalers equal to ``1.0`` the decomposed circuit is
-    functionally equivalent to the original one.
+    * ``n_w_orig`` **free** slots carry the original gate's rotation
+      parameter(s) -- exactly as many as the un-decomposed gate would
+      have consumed (1 for rotation gates, 3 for :class:`Rot`).  They
+      are randomly initialised by :class:`Model` and are shared across
+      *all* free leaf steps through the stored ``angle_chain``.
+    * One **scaler** slot per *fixed* leaf step, initialised to ``1.0``,
+      so that the effective angle is ``scaler * fixed_value``.
+
+    At initialisation (all scalers == 1.0) the decomposed block is
+    functionally identical to the original one: a CRX(w) decomposes into
+    one random ``w`` plus two scalers for ``±π/2`` -- i.e. still a CRX.
+
+    For non-parameterised originals (H, CX, CY, CZ) only the scaler
+    slots exist.
     """
 
     def __init__(self, decomposed_blocks: List[DecomposedBlock]) -> None:
         super().__init__()
         self._decomposed_blocks = decomposed_blocks
 
-    # --- single source of truth: iterate the structure once --------------
+    # --- helpers ---------------------------------------------------------
+    @staticmethod
+    def _n_w_orig(block: Block) -> int:
+        """Number of original trainable params per wire-set of a block."""
+        if not block.is_rotational:
+            return 0
+        return 3 if block.gate.__name__ == "Rot" else 1
+
+    @staticmethod
+    def _n_scalers_per_wireset(db: "DecomposedBlock") -> int:
+        return sum(1 for s in db.leaf_steps if s.is_fixed)
+
     def _iter_wire_sets(self, block: Block, n_qubits: int):
         """Yield the wire-sets a block acts on (or nothing if skipped)."""
         if block.is_entangling:
@@ -166,39 +208,43 @@ class DecomposedCircuit(Circuit):
         else:
             yield from range(n_qubits)
 
+    def _slots_per_wireset(self, db: "DecomposedBlock") -> int:
+        if not db.leaf_steps:
+            return 0  # handled by Block.n_params directly
+        return self._n_w_orig(db.original_block) + self._n_scalers_per_wireset(db)
+
+    # --- Circuit API -----------------------------------------------------
     def n_params_per_layer(self, n_qubits: int) -> int:
         total = 0
         for db in self._decomposed_blocks:
-            if not db.flat_steps:
+            if not db.leaf_steps:
                 total += db.original_block.n_params(n_qubits)
                 continue
-            n_param_steps = sum(1 for s in db.flat_steps if s.has_param)
-            total += n_param_steps * sum(
+            slots = self._slots_per_wireset(db)
+            total += slots * sum(
                 1 for _ in self._iter_wire_sets(db.original_block, n_qubits)
             )
         return total
 
     def n_pulse_params_per_layer(self, n_qubits: int) -> int:
-        # Decomposed circuit uses only unitary basis gates.
         return 0
 
     def get_control_indices(self, n_qubits: int) -> Optional[List[int]]:
-        # No controlled rotations remain after decomposition.
         return None
 
     def scaler_mask(self, n_qubits: int) -> jnp.ndarray:
-        """Boolean mask of ``n_params_per_layer`` slots; ``True`` where the
-        slot is a structural scaler (should be initialised to ``1.0``)."""
+        """Boolean mask over ``n_params_per_layer``: ``True`` for every
+        slot that is a structural scaler (to be initialised to ``1.0``)."""
         mask: List[bool] = []
         for db in self._decomposed_blocks:
-            if not db.flat_steps:
-                # Undecomposed: all slots are free parameters.
+            if not db.leaf_steps:
                 mask.extend([False] * db.original_block.n_params(n_qubits))
                 continue
+            n_w = self._n_w_orig(db.original_block)
+            n_s = self._n_scalers_per_wireset(db)
+            per_ws = [False] * n_w + [True] * n_s
             for _ in self._iter_wire_sets(db.original_block, n_qubits):
-                for s in db.flat_steps:
-                    if s.has_param:
-                        mask.append(s.is_fixed)
+                mask.extend(per_ws)
         return jnp.array(mask, dtype=bool)
 
     def build(self, w, n_qubits: int, **kwargs) -> None:
@@ -206,23 +252,47 @@ class DecomposedCircuit(Circuit):
         for db in self._decomposed_blocks:
             block = db.original_block
 
-            if not db.flat_steps:
+            if not db.leaf_steps:
                 # Already a basis gate -- delegate to the original Block.
                 w_idx = block.apply(n_qubits, w, w_idx, **kwargs)
-            else:
-                for wires in self._iter_wire_sets(block, n_qubits):
-                    for step in db.flat_steps:
-                        gate_fn = getattr(Gates, step.gate_name)
-                        step_wires = _resolve_wires(step.wire_fn, wires)
-                        if step.has_param:
-                            gate_fn(
-                                w[w_idx] * step.fixed_value,
-                                wires=step_wires,
-                                **kwargs,
-                            )
-                            w_idx += 1
-                        else:
-                            gate_fn(wires=step_wires, **kwargs)
+                Gates.Barrier(wires=list(range(n_qubits)), **kwargs)
+                continue
+
+            n_w = self._n_w_orig(block)
+            for wires in self._iter_wire_sets(block, n_qubits):
+                # Original gate's trainable parameter(s), shared between
+                # all free leaf steps of this wire-set.
+                if n_w == 0:
+                    w_orig = None
+                elif n_w == 1:
+                    w_orig = w[w_idx]
+                    w_idx += 1
+                else:
+                    w_orig = w[w_idx : w_idx + n_w]
+                    w_idx += n_w
+                # Scalers and free angles are emitted in the order
+                # leaf steps appear in db.leaf_steps.
+                for step in db.leaf_steps:
+                    gate_fn = getattr(Gates, step.gate_name)
+                    step_wires = _resolve_wires(step.wire_fn, wires)
+
+                    if not step.has_param:
+                        gate_fn(wires=step_wires, **kwargs)
+                    elif step.is_fixed:
+                        gate_fn(
+                            w[w_idx] * step.fixed_value,
+                            wires=step_wires,
+                            **kwargs,
+                        )
+                        w_idx += 1
+                    else:
+                        # Free step: derive angle from shared w_orig.
+                        angle = (
+                            step.angle_chain(w_orig)
+                            if step.angle_chain is not None
+                            else w_orig
+                        )
+                        gate_fn(angle, wires=step_wires, **kwargs)
 
             Gates.Barrier(wires=list(range(n_qubits)), **kwargs)
 
@@ -234,12 +304,12 @@ def _build_decomposed_blocks(structure: tuple) -> List[DecomposedBlock]:
     blocks: List[DecomposedBlock] = []
     for block in structure:
         pulse_pp = PulseInformation.gate_by_name(block.gate.__name__)
-        flat_steps = (
+        leaf_steps = (
             _flatten_decomposition(pulse_pp)
             if (pulse_pp is not None and not pulse_pp.is_leaf)
             else []
         )
-        blocks.append(DecomposedBlock(original_block=block, flat_steps=flat_steps))
+        blocks.append(DecomposedBlock(original_block=block, leaf_steps=leaf_steps))
     return blocks
 
 

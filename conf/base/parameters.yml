@@ -19,7 +19,7 @@ model:
   output_qubit: -1
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]
-  decompose_circuit: True
+  decompose_circuit: False
   noise_params:
     BitFlip: 0.0
     PhaseFlip: 0.0
@@ -41,7 +41,7 @@ fcc:
   seed: 1000
   n_samples: 500
   sample_axis: ["unitary", "pulse"]
-  pulse_params_variance: 1e-3
+  pulse_params_variance: 0.008
   method: "pearson"
   weighting: False
   scale: True
@@ -50,7 +50,7 @@ fcc:
 fidelity:
   seed: 1000
   n_samples: 500
-  pulse_params_variance: 1e-3
+  pulse_params_variance: 0.008
   scale: True
 
 expressibility:
@@ -58,5 +58,5 @@ expressibility:
   n_samples: 500
   n_bins: 50
   sample_axis: ["unitary", "pulse"]
-  pulse_params_variance: 1e-3
+  pulse_params_variance: 0.008
   scale: True
