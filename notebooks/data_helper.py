@@ -146,7 +146,7 @@ def generate_df(run_ids: List[str]):
             row["data.seed"] = int(run.data.params["data.seed"])
         if "model.n_pulse_params" in run.data.params:
             row["model.n_pulse_params"] = int(run.data.params["model.n_pulse_params"])
-            row["model.n_gate_params"] = int(run.data.metrics["model.n_gate_params"]) # change to params
+            row["model.n_gate_params"] = int(run.data.params["model.n_gate_params"]) # change to params
 
         frequencies = sorted(
             [
@@ -188,7 +188,8 @@ def generate_df(run_ids: List[str]):
                 row["train_pulse"] = False
                 row["decompose_circuit"] = False
                 
-                row["decompose_circuit"] = run.data.params["model.decompose_circuit"].lower() == "true"
+                if "model.decompose_circuit" in run.data.params:
+                    row["decompose_circuit"] = run.data.params["model.decompose_circuit"].lower() == "true"
 
 
         if "fidelity" in run.data.metrics:
