@@ -3,7 +3,7 @@ import hashlib
 import os
 import pandas as pd
 from rich.progress import track
-from typing import List
+from typing import List, Tuple
 
 
 def get_experiments_by_name(experiment_name: str):
@@ -92,6 +92,38 @@ def cache_df(run_ids: List[str], df=None):
         df = pd.read_csv(f"{path}df.csv")
 
     return df, hs
+
+
+def cache_stepwise_df(run_ids: List[str], df_stepwise=None):
+    """
+    Cache or retrieve the stepwise metrics DataFrame.
+
+    Works analogously to cache_df but for the step-level metrics table.
+
+    Args:
+        run_ids (List[str]): A list of run ids used for hashing.
+        df_stepwise (pd.DataFrame, optional): Pre-computed stepwise DataFrame.
+
+    Returns:
+        Tuple[pd.DataFrame, str]: The stepwise DataFrame and the cache hash.
+    """
+    hs = generate_hash(run_ids)
+    path = f".cache/{hs}/"
+    os.makedirs(path, exist_ok=True)
+
+    stepwise_path = f"{path}df_stepwise.csv"
+
+    if os.path.exists(stepwise_path):
+        print(f"Stepwise DF already exists: {hs}")
+        df_stepwise = pd.read_csv(stepwise_path)
+    else:
+        if df_stepwise is None:
+            return generate_stepwise_df(run_ids), hs
+        df_stepwise.to_csv(stepwise_path, index=False)
+        print(f"Created stepwise DF cache: {hs}")
+        df_stepwise = pd.read_csv(stepwise_path)
+
+    return df_stepwise, hs
 
 
 def generate_df(run_ids: List[str]):
@@ -205,3 +237,67 @@ def export_csv(df: pd.DataFrame, name: str, experiment_id: str, hash: str):
     filepath = f"{path}{name}.csv"
     df.to_csv(filepath, index=False)
     print(f"Exported CSV to {filepath}")
+
+
+def export_stepwise_csv(
+    df_stepwise: pd.DataFrame, name: str, experiment_id: str, hash: str
+):
+    """
+    Exports the stepwise metrics dataframe as a CSV file.
+
+    Args:
+        df_stepwise (pd.DataFrame): The stepwise metrics dataframe.
+        name (str): The scenario name (e.g. 'study-4').
+        experiment_id (str): The experiment id.
+        hash (str): The hash of the run ids.
+    """
+    if df_stepwise is None or df_stepwise.empty:
+        return
+    path = f"results/{experiment_id}/{hash}/"
+    os.makedirs(path, exist_ok=True)
+    filepath = f"{path}{name}_stepwise.csv"
+    df_stepwise.to_csv(filepath, index=False)
+    print(f"Exported stepwise CSV to {filepath}")
+
+
+def generate_stepwise_df(run_ids: List[str]) -> pd.DataFrame:
+    """
+    Fetch per-step metric histories for train_mse (or loss),
+    pulse_scaler_mean, and pulse_scaler_std from MLflow for all given runs.
+
+    Returns a long-format DataFrame with columns:
+        run_id, step, metric, value
+
+    Only runs that are FINISHED are included.
+
+    Args:
+        run_ids (List[str]): A list of run ids.
+
+    Returns:
+        pd.DataFrame: Long-format DataFrame of step-wise metrics.
+    """
+    client = mlflow.tracking.MlflowClient()
+    metric_names = ["train_mse", "loss", "pulse_scaler_mean", "pulse_scaler_std"]
+
+    rows = []
+    for run_id in track(run_ids, description="Collecting stepwise metrics..."):
+        run = client.get_run(run_id)
+        if run.info.status != "FINISHED":
+            continue
+
+        for metric_name in metric_names:
+            history = client.get_metric_history(run_id, metric_name)
+            if not history:
+                continue
+            for m in history:
+                rows.append(
+                    {
+                        "run_id": run_id,
+                        "step": m.step,
+                        "metric": metric_name,
+                        "value": m.value,
+                    }
+                )
+
+    df = pd.DataFrame(rows)
+    return df

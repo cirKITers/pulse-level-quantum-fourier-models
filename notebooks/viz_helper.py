@@ -129,12 +129,14 @@ def viz_study_3(df, max_distortion, show_error):
     return figures
 
 
-def viz_study_4(df, show_error, mse_step=None):
+def viz_study_4(df, show_error, mse_step=None, df_stepwise=None):
     figures = []
 
-    figures.append(pulse_param_mse_comparison(df, show_error, mse_step=mse_step))
-    figures.extend(pulse_mean_and_variance_over_step(df, show_error))
-    figures.append(loss_over_step(df, show_error))
+    figures.append(
+        pulse_param_mse_comparison(df, show_error, mse_step=mse_step, df_stepwise=df_stepwise)
+    )
+    figures.extend(pulse_mean_and_variance_over_step(df, show_error, df_stepwise=df_stepwise))
+    figures.append(loss_over_step(df, show_error, df_stepwise=df_stepwise))
 
     return figures
 
@@ -770,7 +772,10 @@ def expressibility_over_distortion(df: pd.DataFrame, max_distortion, show_error)
 
 
 def pulse_param_mse_comparison(
-    df: pd.DataFrame, show_error: bool = True, mse_step: int = None
+    df: pd.DataFrame,
+    show_error: bool = True,
+    mse_step: int = None,
+    df_stepwise: pd.DataFrame = None,
 ):
     """
     Compare the train MSE across circuits for train_pulse=True vs False.
@@ -783,14 +788,13 @@ def pulse_param_mse_comparison(
         show_error (bool): Whether to display error bars. Defaults to True.
         mse_step (int, optional): The training step at which to evaluate the
             MSE. If None, uses the final ``train_mse`` metric stored in the
-            run summary. If specified, fetches the metric history from MLflow
-            and picks the value at the given step.
+            run summary. If specified, looks up the value from df_stepwise.
+        df_stepwise (pd.DataFrame, optional): Long-format DataFrame with
+            columns run_id, step, metric, value. Required when mse_step is set.
 
     Returns:
         go.Figure: The plotly figure.
     """
-    import mlflow
-
     fig = go.Figure()
 
     # Sort ansatzes by ratio of pulse params to standard params
@@ -803,23 +807,25 @@ def pulse_param_mse_comparison(
     )
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
-    # If a specific step is requested, fetch per-run metric history
+    # If a specific step is requested, build per-run lookup from stepwise data
     step_mse_cache = {}
-    if mse_step is not None:
-        client = mlflow.tracking.MlflowClient()
+    if mse_step is not None and df_stepwise is not None and not df_stepwise.empty:
+        # Filter to train_mse first, fall back to loss per run
         for run_id in df["run_id"].values:
-            history = client.get_metric_history(run_id, "train_mse")
-            if not history:
-                history = client.get_metric_history(run_id, "loss")
-            if history:
-                step_map = {m.step: m.value for m in history}
-                # Use exact step if available, otherwise closest step <= mse_step
+            run_metrics = df_stepwise[df_stepwise["run_id"] == run_id]
+            # Prefer train_mse, fall back to loss
+            for metric_name in ["train_mse", "loss"]:
+                metric_df = run_metrics[run_metrics["metric"] == metric_name]
+                if metric_df.empty:
+                    continue
+                step_map = dict(zip(metric_df["step"].values, metric_df["value"].values))
                 if mse_step in step_map:
                     step_mse_cache[run_id] = step_map[mse_step]
                 else:
                     valid_steps = [s for s in step_map if s <= mse_step]
                     if valid_steps:
                         step_mse_cache[run_id] = step_map[max(valid_steps)]
+                break  # found a metric for this run, stop trying alternatives
 
     color_it = iter(design.prim_colors_lst)
     for train_pulse, label in [(False, "Gate"), (True, "+ Pulse")]:
@@ -865,40 +871,43 @@ def pulse_param_mse_comparison(
     return fig
 
 
-def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True):
+def pulse_mean_and_variance_over_step(
+    df: pd.DataFrame, show_error: bool = True, df_stepwise: pd.DataFrame = None
+):
     """
     Visualize how pulse_scaler_mean and pulse_scaler_std evolve over training
-    steps.  For each ansatz the per-step metric history is fetched from MLflow,
+    steps.  For each ansatz the per-step metric data is read from df_stepwise,
     averaged over seeds, and plotted with optional error bars.
 
     Args:
         df (pd.DataFrame): DataFrame with columns "run_id", "ansatz", and
             "train_pulse".  Only rows where train_pulse is True are considered.
         show_error (bool): Whether to display error bars (std over seeds).
+        df_stepwise (pd.DataFrame, optional): Long-format DataFrame with
+            columns run_id, step, metric, value containing pre-fetched
+            step-wise metrics.
 
     Returns:
         tuple[go.Figure, go.Figure]: Two figures – one for pulse_scaler_mean
             and one for pulse_scaler_std over training steps.
     """
-    import mlflow
-
     # Only consider runs that actually trained pulse parameters
     filtered_df = df[df["train_pulse"] == True]  # noqa: E712
 
     ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
-    client = mlflow.tracking.MlflowClient()
 
     def _collect_metric_history(ansatz_df, metric_name):
         """Return a DataFrame with columns 'step' and one column per run."""
-        histories = {}
-        for run_id in ansatz_df["run_id"].values:
-            history = client.get_metric_history(run_id, metric_name)
-            if history:
-                histories[run_id] = {m.step: m.value for m in history}
-        if not histories:
+        if df_stepwise is None or df_stepwise.empty:
             return pd.DataFrame()
-        hist_df = pd.DataFrame(histories)
-        hist_df.index.name = "step"
+        run_ids = set(ansatz_df["run_id"].values)
+        metric_df = df_stepwise[
+            (df_stepwise["run_id"].isin(run_ids))
+            & (df_stepwise["metric"] == metric_name)
+        ]
+        if metric_df.empty:
+            return pd.DataFrame()
+        hist_df = metric_df.pivot(index="step", columns="run_id", values="value")
         hist_df = hist_df.sort_index()
         return hist_df
 
@@ -965,36 +974,39 @@ def pulse_mean_and_variance_over_step(df: pd.DataFrame, show_error: bool = True)
     return figures
 
 
-def loss_over_step(df: pd.DataFrame, show_error: bool = True):
+def loss_over_step(
+    df: pd.DataFrame, show_error: bool = True, df_stepwise: pd.DataFrame = None
+):
     """
     Visualize how the training loss evolves over training steps for each ansatz.
-    For each ansatz the per-step metric history is fetched from MLflow,
+    For each ansatz the per-step metric data is read from df_stepwise,
     averaged over seeds, and plotted with optional error bars.
 
     Args:
         df (pd.DataFrame): DataFrame with columns "run_id", "ansatz", and
             "train_pulse".
         show_error (bool): Whether to display error bars (std over seeds).
+        df_stepwise (pd.DataFrame, optional): Long-format DataFrame with
+            columns run_id, step, metric, value containing pre-fetched
+            step-wise metrics.
 
     Returns:
         go.Figure: A figure showing loss over training steps.
     """
-    import mlflow
-
     ansatzes = sort_ansatzes(df["ansatz"].unique())
-    client = mlflow.tracking.MlflowClient()
 
     def _collect_metric_history(ansatz_df, metric_name):
         """Return a DataFrame with columns 'step' and one column per run."""
-        histories = {}
-        for run_id in ansatz_df["run_id"].values:
-            history = client.get_metric_history(run_id, metric_name)
-            if history:
-                histories[run_id] = {m.step: m.value for m in history}
-        if not histories:
+        if df_stepwise is None or df_stepwise.empty:
             return pd.DataFrame()
-        hist_df = pd.DataFrame(histories)
-        hist_df.index.name = "step"
+        run_ids = set(ansatz_df["run_id"].values)
+        metric_df = df_stepwise[
+            (df_stepwise["run_id"].isin(run_ids))
+            & (df_stepwise["metric"] == metric_name)
+        ]
+        if metric_df.empty:
+            return pd.DataFrame()
+        hist_df = metric_df.pivot(index="step", columns="run_id", values="value")
         hist_df = hist_df.sort_index()
         return hist_df
 

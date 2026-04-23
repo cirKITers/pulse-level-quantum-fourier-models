@@ -1,4 +1,11 @@
-from data_helper import get_experiments_by_name, get_run_ids, cache_df, export_csv
+from data_helper import (
+    get_experiments_by_name,
+    get_run_ids,
+    cache_df,
+    cache_stepwise_df,
+    export_csv,
+    export_stepwise_csv,
+)
 from viz_helper import (
     save_figures,
     viz_study_1,
@@ -57,11 +64,20 @@ for scenario, setting in scenarios.items():
     cache_id = setting
     df, hs = cache_df(run_ids, df=None)
 
+    # For study-4, also fetch step-wise metric histories
+    df_stepwise = None
+    if scenario == "study-4":
+        df_stepwise, _ = cache_stepwise_df(run_ids, df_stepwise=None)
+
     print(f"Hash for scenario: {hs}")
 
     print(f"Ignoring Ansatzes: {ignore_ansatzes}")
     for ansatz in ignore_ansatzes:
         df = df[df["ansatz"] != ansatz]
+        if df_stepwise is not None:
+            # Filter stepwise data to match the summary DataFrame
+            valid_run_ids = set(df["run_id"].values)
+            df_stepwise = df_stepwise[df_stepwise["run_id"].isin(valid_run_ids)]
 
     if scenario == "study-1":
         figures = viz_study_1(
@@ -88,6 +104,7 @@ for scenario, setting in scenarios.items():
             df,
             show_error=setting["show_error"],
             mse_step=setting.get("mse_step", None),
+            df_stepwise=df_stepwise,
         )
 
     save_figures(
@@ -103,3 +120,11 @@ for scenario, setting in scenarios.items():
         experiment_id=setting["experiment_id"],
         hash=hs,
     )
+
+    if df_stepwise is not None:
+        export_stepwise_csv(
+            df_stepwise=df_stepwise,
+            name=scenario,
+            experiment_id=setting["experiment_id"],
+            hash=hs,
+        )
