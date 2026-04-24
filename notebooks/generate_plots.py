@@ -57,7 +57,7 @@ for scenario, setting in scenarios.items():
 
     # Get the df from cache or generate it if it doesn't exist
     cache_id = setting
-    df, hs = cache_df(run_ids, df=None)
+    df, hs = cache_df(run_ids, df=None, use_cache=cache)
 
     print(f"Hash for scenario: {hs}")
 

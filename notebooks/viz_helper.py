@@ -850,7 +850,7 @@ def pulse_param_mse_comparison(
         for ansatz in ansatzes:
             subset = df[df["ansatz"] == ansatz]
             subset = subset[subset["train_pulse"] == train_pulse]
-            subset = subset[subset["model.decompose_circuit"] == decompose_circuit]
+            subset = subset[subset["decompose_circuit"] == decompose_circuit]
 
             means.append(subset['train_mse'].mean())
             stds.append(subset['train_mse'].std())

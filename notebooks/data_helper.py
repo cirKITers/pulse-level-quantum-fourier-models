@@ -59,7 +59,7 @@ def generate_hash(run_ids: List[str]):
     return hs
 
 
-def cache_df(run_ids: List[str], df=None):
+def cache_df(run_ids: List[str], df=None, use_cache=True):
     """
     This function takes a list of run ids and an optional dataframe.
     It calculates the hash of the run ids and checks if a dataframe with the same hash already exists.
@@ -87,7 +87,7 @@ def cache_df(run_ids: List[str], df=None):
 
     cache_file = f"{path}df.pkl"
 
-    if os.path.exists(cache_file):
+    if use_cache and os.path.exists(cache_file):
         print(f"DF already exists: {hs}")
         df = pd.read_pickle(cache_file)
     else:
@@ -186,10 +186,11 @@ def generate_df(run_ids: List[str]):
                 row["pulse_scaler_std"] = run.data.metrics["pulse_scaler_std"]
             else:
                 row["train_pulse"] = False
-                row["decompose_circuit"] = False
-                
-                if "model.decompose_circuit" in run.data.params:
-                    row["decompose_circuit"] = run.data.params["model.decompose_circuit"].lower() == "true"
+
+        
+        row["decompose_circuit"] = False
+        if "model.decompose_circuit" in run.data.params:
+            row["decompose_circuit"] = run.data.params["model.decompose_circuit"].lower() == "true"
 
 
         if "fidelity" in run.data.metrics:
