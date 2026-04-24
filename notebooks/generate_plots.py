@@ -17,11 +17,11 @@ cache = False
 
 # scenarios for plotting
 scenarios = {
-    "study-1": {
-        "experiment_name": "study-1-14",
-        "show_error": False,
-        "threshold": 1e-4,
-    },
+    # "study-1": {
+    #     "experiment_name": "study-1-14",
+    #     "show_error": False,
+    #     "threshold": 1e-4,
+    # },
     # "study-2": {
     #     "experiment_name": "study-2-2",
     #     "show_error": False,
@@ -30,11 +30,10 @@ scenarios = {
     #     "experiment_name": "study-3-0",
     #     "show_error": True,
     # },
-    # "study-4": {
-    #     "experiment_name": "study-4-4",
-    #     "show_error": True,
-    #     # "mse_step": 500,  # training step at which to evaluate MSE (None = final)
-    # },
+    "study-4": {
+        "experiment_name": "study-4-6",
+        "show_error": True,
+    },
 }
 
 for scenario, setting in scenarios.items():
@@ -90,7 +89,6 @@ for scenario, setting in scenarios.items():
         figures = viz_study_4(
             df,
             show_error=setting["show_error"],
-            mse_step=setting.get("mse_step", None),
         )
 
     save_figures(

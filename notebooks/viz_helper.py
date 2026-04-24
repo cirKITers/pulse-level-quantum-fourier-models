@@ -165,11 +165,11 @@ def viz_study_3(df, max_distortion, show_error):
     return figures
 
 
-def viz_study_4(df, show_error, mse_step=None):
+def viz_study_4(df, show_error):
     figures = []
 
     figures.append(
-        pulse_param_mse_comparison(df, show_error, mse_step=mse_step)
+        pulse_param_mse_comparison(df, show_error)
     )
     figures.extend(pulse_mean_and_variance_over_step(df, show_error))
     figures.append(loss_over_step(df, show_error))
@@ -810,7 +810,6 @@ def expressibility_over_distortion(df: pd.DataFrame, max_distortion, show_error)
 def pulse_param_mse_comparison(
     df: pd.DataFrame,
     show_error: bool = True,
-    mse_step: int = None,
 ):
     """
     Compare the train MSE across circuits for train_pulse=True vs False.
@@ -819,13 +818,8 @@ def pulse_param_mse_comparison(
 
     Args:
         df (pd.DataFrame): DataFrame with columns "ansatz", "train_pulse",
-            "train_mse", "run_id", and "data.seed".  For ``mse_step`` lookup,
-            the list-valued columns ``train_mse.steps``/``train_mse.values``
-            (or ``loss.*``) are read from ``df`` directly.
+            "train_mse", "run_id", and "data.seed". 
         show_error (bool): Whether to display error bars. Defaults to True.
-        mse_step (int, optional): The training step at which to evaluate the
-            MSE. If None, uses the final ``train_mse`` metric stored in the
-            run summary.
 
     Returns:
         go.Figure: The plotly figure.
@@ -842,27 +836,6 @@ def pulse_param_mse_comparison(
     )
     x_labels = [circuit_name_to_str(a) for a in ansatzes]
 
-    # If a specific step is requested, build per-run lookup from the
-    # list-valued step/value columns stored in ``df``.
-    step_mse_cache = {}
-    if mse_step is not None:
-        for _, row in df.iterrows():
-            steps = row.get(f"{"train_mse"}.steps")
-            values = row.get(f"{"train_mse"}.values")
-            if not isinstance(steps, (list, tuple, np.ndarray)):
-                continue
-            if not isinstance(values, (list, tuple, np.ndarray)):
-                continue
-            if len(steps) == 0:
-                continue
-            step_map = dict(zip(list(steps), list(values)))
-            if mse_step in step_map:
-                step_mse_cache[row["run_id"]] = step_map[mse_step]
-            else:
-                valid_steps = [s for s in step_map if s <= mse_step]
-                if valid_steps:
-                    step_mse_cache[row["run_id"]] = step_map[max(valid_steps)]
-
     color_it = iter(design.prim_colors_lst)
     cases = [
         (False, False, "Gate"),
@@ -877,21 +850,10 @@ def pulse_param_mse_comparison(
         for ansatz in ansatzes:
             subset = df[df["ansatz"] == ansatz]
             subset = subset[subset["train_pulse"] == train_pulse]
-            if "model.decompose_circuit" in subset.columns:
-                subset = subset[subset["model.decompose_circuit"] == decompose_circuit]
+            subset = subset[subset["model.decompose_circuit"] == decompose_circuit]
 
-            if mse_step is not None:
-                # Look up the MSE at the requested step for each run
-                values = [
-                    step_mse_cache[rid]
-                    for rid in subset["run_id"].values
-                    if rid in step_mse_cache
-                ]
-                means.append(np.mean(values) if values else np.nan)
-                stds.append(np.std(values) if values else np.nan)
-            else:
-                means.append(subset["train_mse"].mean())
-                stds.append(subset["train_mse"].std())
+            means.append(subset['train_mse'].mean())
+            stds.append(subset['train_mse'].std())
 
         fig.add_bar(
             x=x_labels,
@@ -901,9 +863,8 @@ def pulse_param_mse_comparison(
             marker=dict(color=color),
         )
 
-    step_label = f" @ Step {mse_step}" if mse_step is not None else ""
     fig.update_layout(
-        title=f"MSE: Gate vs. Gate + Pulse{step_label}",
+        title=f"MSE: Gate vs. Gate + Pulse",
         xaxis_title="Circuit",
         yaxis_title="MSE",
         barmode="group",
@@ -1041,7 +1002,7 @@ def loss_over_step(
 
             # Try common loss metric names; both live as list-valued columns
             # on ``subset`` now.
-            hist_df = _collect_metric_history(subset, "train_mse")
+            hist_df = _collect_metric_history(subset, 'train_mse')
             if hist_df.empty:
                 hist_df = _collect_metric_history(subset, "loss")
             if hist_df.empty:
