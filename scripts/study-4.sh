@@ -28,7 +28,7 @@ do
                     sleep 10
                 done
 
-                echo "--- $circuit Ansatz, Train Pulse=$train_pulse, Decompose=$decompose_circuit, Seed $seed ---"
+                echo "--- $circuit Ansatz, Train Pulse=$train_pulse, Decompose $decompose_circuit, Seed $seed ---"
                 uv run kedro run --pipeline "study-4" --params="data.seed=$seed,model.circuit_type=$circuit,model.decompose_circuit=$decompose_circuit,train.train_pulse=$train_pulse" &
 
                 sleep 20
