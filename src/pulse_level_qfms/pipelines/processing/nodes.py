@@ -447,6 +447,120 @@ def log_metrics(
     )
 
 
+def _jacobian_rank(
+    model: Model,
+    theta: jnp.ndarray,
+    lam: jnp.ndarray,
+    gate_mode: str,
+    argnums: Tuple[int, ...],
+    tol_rel: float,
+) -> Tuple[int, float, Tuple[int, ...]]:
+    """Compute the numerical rank of the Jacobian of the Fourier coefficients
+    of *model* w.r.t. the parameter groups indicated by *argnums*.
+
+    The Fourier coefficients are stacked into a real vector
+    ``[Re(c_ω), Im(c_ω)]`` so the resulting Jacobian is a real
+    ``(2|Ω|, |params|)`` matrix from which a meaningful rank can be
+    obtained via SVD.  ``tol_rel`` is multiplied with the largest
+    singular value to obtain the cutoff used for the numerical rank
+    estimate (matches ``numpy.linalg.matrix_rank``'s default policy).
+
+    Args:
+        model: Already-instantiated quantum Fourier model.
+        theta: Unitary parameter vector ``θ`` (shape as in ``model.params``).
+        lam: Pulse-scaling parameter vector ``λ`` (shape as in
+            ``model.pulse_params``).
+        gate_mode: ``"pulse"`` or ``"unitary"`` — must match the regime
+            in which the manuscript's J_θ / J_ext are defined.
+        argnums: Subset of ``(0, 1)`` indicating which arguments to
+            differentiate w.r.t. — ``(0,)`` gives ``J_θ``, ``(0, 1)``
+            gives ``J_ext``.
+        tol_rel: Relative tolerance for the numerical rank.
+
+    Returns:
+        Tuple ``(rank, sv_min_above_tol, jacobian_shape)`` — ``rank`` is
+        the integer numerical rank, ``sv_min_above_tol`` is the smallest
+        singular value above the cutoff (or ``0.0`` when the matrix is
+        zero) and ``jacobian_shape`` records the flattened Jacobian
+        shape for diagnostics.
+    """
+    def _coeff_vec(theta_, lam_):
+        coeffs, _ = Coefficients.get_spectrum(
+            model,
+            params=theta_,
+            pulse_params=lam_,
+            gate_mode=gate_mode,
+            shift=False,
+            trim=False,
+            numerical_cap=-1,
+            force_mean=True,
+            execution_type="expval",
+        )
+        # Stack real and imaginary parts so SVD gives a real-valued rank.
+        return jnp.concatenate([coeffs.real.ravel(), coeffs.imag.ravel()])
+
+    jac = jax.jacrev(_coeff_vec, argnums=argnums)(theta, lam)
+    if isinstance(jac, tuple):
+        # Flatten each block on its parameter axes and concatenate columns.
+        blocks = [j.reshape(j.shape[0], -1) for j in jac]
+        J = jnp.concatenate(blocks, axis=1)
+    else:
+        J = jac.reshape(jac.shape[0], -1)
+
+    J_np = jnp.asarray(J)
+    s = jnp.linalg.svd(J_np, compute_uv=False)
+    s_max = float(jnp.max(s)) if s.size > 0 else 0.0
+    cutoff = tol_rel * s_max
+    rank = int(jnp.sum(s > cutoff))
+    sv_min_above = float(jnp.min(jnp.where(s > cutoff, s, jnp.inf))) if rank > 0 else 0.0
+    return rank, sv_min_above, tuple(int(d) for d in J.shape)
+
+
+def _log_jacobian_ranks(
+    model: Model,
+    theta: jnp.ndarray,
+    lam: jnp.ndarray,
+    gate_mode: str,
+    tol_rel: float,
+    when: str,
+    step: int,
+) -> None:
+    """Compute ``rank J_θ``, ``rank J_ext`` and ``Δr`` and log to MLflow.
+
+    A non-zero ``Δr = rank J_ext − rank J_θ`` certifies that
+    the pulse-scaling parameters provide new search directions in
+    Fourier-coefficient space beyond what the unitary parameters alone
+    can reach.
+
+    Args:
+        model: The model whose autodiff is exercised.
+        theta: Current unitary parameters.
+        lam: Current pulse-scaling parameters.
+        gate_mode: ``"pulse"`` or ``"unitary"`` — the regime in which
+            ranks are evaluated.
+        tol_rel: Relative SVD cutoff used for the numerical rank.
+        when: Tag for the metric name (``"init"``/``"trained"``).
+        step: MLflow step coordinate.
+    """
+    log.info(f"Computing Jacobian ranks ({when}, gate_mode={gate_mode}) ...")
+    r_theta, sv_theta, shape_theta = _jacobian_rank(
+        model, theta, lam, gate_mode, argnums=(0,), tol_rel=tol_rel
+    )
+    r_ext, sv_ext, shape_ext = _jacobian_rank(
+        model, theta, lam, gate_mode, argnums=(0, 1), tol_rel=tol_rel
+    )
+    delta_r = r_ext - r_theta
+    log.info(
+        f"  J_θ shape={shape_theta} rank={r_theta} | "
+        f"J_ext shape={shape_ext} rank={r_ext} | Δr={delta_r}"
+    )
+    mlflow.log_metric(f"rank.J_theta.{when}", r_theta, step=step)
+    mlflow.log_metric(f"rank.J_ext.{when}", r_ext, step=step)
+    mlflow.log_metric(f"rank.delta_r.{when}", delta_r, step=step)
+    mlflow.log_metric(f"rank.J_theta.sv_min.{when}", sv_theta, step=step)
+    mlflow.log_metric(f"rank.J_ext.sv_min.{when}", sv_ext, step=step)
+
+
 def train_model(
     model: Model,
     train_loader: DataLoader,
@@ -459,6 +573,8 @@ def train_model(
     train_unitary: bool,
     train_pulse: bool,
     pulse_learning_rate: Optional[float] = None,
+    rank_eval_enabled: bool = False,
+    rank_eval_tol_rel: float = 1e-8,
 ) -> None:
     gate_mode = "pulse" if train_pulse else "unitary"
 
@@ -492,6 +608,21 @@ def train_model(
         opt = optax.adam(learning_rate)
 
     opt_state = opt.init(params)
+
+    if rank_eval_enabled:
+        # Initial / "generic" Jacobian ranks at the untrained parameters.
+        # Always evaluate in pulse mode: J_θ and J_ext are both defined w.r.t.
+        # (θ, λ) of the pulse model, with λ=ones recovering the unitary
+        # baseline coefficients
+        _log_jacobian_ranks(
+            model,
+            theta=params["unitary"],
+            lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
+            gate_mode="pulse",
+            tol_rel=rank_eval_tol_rel,
+            when="init",
+            step=0,
+        )
 
     try:
         loss_functions = [getattr(Losses, loss) for loss in loss_functions]
@@ -555,6 +686,18 @@ def train_model(
         # log_metrics(model, data=valid_loader, step=step, prefix="valid",
         #             gate_mode=gate_mode,
         #             pulse_params=params.get("pulse", None) if train_pulse else None)
+
+    if rank_eval_enabled:
+        # Trained Jacobian ranks at the converged parameters.
+        _log_jacobian_ranks(
+            model,
+            theta=params["unitary"],
+            lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
+            gate_mode="pulse",
+            tol_rel=rank_eval_tol_rel,
+            when="trained",
+            step=max(steps - 1, 0),
+        )
 
     return {
         "model": model,

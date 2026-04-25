@@ -99,6 +99,8 @@ def create_training_pipeline(**kwargs) -> Pipeline:
                     "params:train.train_unitary",
                     "params:train.train_pulse",
                     "params:train.pulse_learning_rate",
+                    "params:train.rank_eval.enabled",
+                    "params:train.rank_eval.tol_rel",
                 ],
                 outputs={
                     "model": "trained_model",
