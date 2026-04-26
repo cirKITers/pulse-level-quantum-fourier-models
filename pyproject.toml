@@ -37,7 +37,7 @@ torch = [
 torchvision = [
     { index = "pytorch-cpu" },
 ]
-qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "485094b05c3f3d32b2211da970abd8975fc5e349" }
+qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "96fc676309d22e15bc63145cfe0bd6e09db4fb0d" }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
