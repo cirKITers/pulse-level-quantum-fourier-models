@@ -1,7 +1,7 @@
 from qml_essentials.model import Model
 from qml_essentials.coefficients import Datasets
 from qml_essentials.ansaetze import Ansaetze, Circuit, Block, Encoding
-from qml_essentials.gates import Gates, PulseInformation
+from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
 
 from typing import List, Dict, Tuple, Union, Callable, Optional
 from dataclasses import dataclass, field
@@ -360,7 +360,17 @@ def generate_model(
     output_qubit: int,
     seed: int,
     decompose_circuit: bool,
+    envelope: str,
 ) -> Dict[str, Model]:
+    available_envelopes = PulseEnvelope.available()
+    if envelope not in available_envelopes:
+        raise ValueError(
+            f"Unknown pulse envelope '{envelope}'. "
+            f"Available: {available_envelopes}"
+        )
+    PulseInformation.set_envelope(envelope)
+    mlflow.log_param("model.envelope", envelope)
+
     log.info(
         f"Creating model with {n_qubits} qubits, {n_layers} layers, "
         f"and {circuit_type} circuit."

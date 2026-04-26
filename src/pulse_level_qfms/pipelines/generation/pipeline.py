@@ -25,7 +25,8 @@ def create_model_pipeline(**kwargs) -> Pipeline:
                     "params:model.initialization_domain",
                     "params:model.output_qubit",
                     "params:model.seed",
-                    "params:model.decompose_circuit"
+                    "params:model.decompose_circuit",
+                    "params:model.envelope",
                 ],
                 outputs={
                     "model": "model",

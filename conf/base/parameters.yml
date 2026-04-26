@@ -20,6 +20,7 @@ model:
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]
   decompose_circuit: False
+  envelope: "drag" # one of qml_essentials.pulses.PulseEnvelope.available()
   noise_params:
     BitFlip: 0.0
     PhaseFlip: 0.0
