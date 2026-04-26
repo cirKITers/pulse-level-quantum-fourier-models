@@ -690,8 +690,8 @@ def train_model(
             _log_jacobian_ranks(
                 model,
                 theta=params["unitary"],
-                lam=params.get("pulse", None) if train_pulse else None,
-                gate_mode=gate_mode,
+                lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
+                gate_mode="pulse",
                 tol_rel=rank_eval_tol_rel,
                 when="training",
                 step=step + 1,
