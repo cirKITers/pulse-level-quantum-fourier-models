@@ -609,7 +609,7 @@ def train_model(
 
     opt_state = opt.init(params)
 
-    if rank_eval_enabled:
+    if rank_eval_enabled and train_pulse:
         # Initial / "generic" Jacobian ranks at the untrained parameters.
         # Always evaluate in pulse mode: J_θ and J_ext are both defined w.r.t.
         # (θ, λ) of the pulse model, with λ=ones recovering the unitary
@@ -682,7 +682,7 @@ def train_model(
             noise_params=noise_params,
             pulse_params=params.get("pulse", None) if train_pulse else None,
         )
-        if rank_eval_enabled and step % rank_report_interval == 0:
+        if rank_eval_enabled and train_pulse and step + 1 % rank_report_interval == 0:
             # Initial / "generic" Jacobian ranks at the untrained parameters.
             # Always evaluate in pulse mode: J_θ and J_ext are both defined w.r.t.
             # (θ, λ) of the pulse model, with λ=ones recovering the unitary
@@ -694,7 +694,7 @@ def train_model(
                 gate_mode="pulse",
                 tol_rel=rank_eval_tol_rel,
                 when="training",
-                step=step + 1,
+                step=step + 1, # because we report init
             )
 
         # log_metrics(model, data=valid_loader, step=step, prefix="valid",
