@@ -574,6 +574,7 @@ def train_model(
     pulse_learning_rate: Optional[float] = None,
     rank_eval_enabled: bool = False,
     rank_eval_tol_rel: float = 1e-8,
+    rank_report_interval: int = 100,
 ) -> None:
     gate_mode = "pulse" if train_pulse else "unitary"
 

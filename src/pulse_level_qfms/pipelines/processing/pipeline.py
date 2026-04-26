@@ -101,6 +101,7 @@ def create_training_pipeline(**kwargs) -> Pipeline:
                     "params:train.pulse_learning_rate",
                     "params:train.rank_eval.enabled",
                     "params:train.rank_eval.tol_rel",
+                    "params:train.rank_eval.report_interval",
                 ],
                 outputs={
                     "model": "trained_model",

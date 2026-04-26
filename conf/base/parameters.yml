@@ -40,8 +40,9 @@ train:
   train_unitary: True
   train_pulse: False # must be false when decompose_circuit is true
   rank_eval:
-    enabled: False
+    enabled: True
     tol_rel: 1.0e-8
+    report_interval: 50
 
 fcc:
   seed: 1000
