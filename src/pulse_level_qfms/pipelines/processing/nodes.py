@@ -522,7 +522,6 @@ def _log_jacobian_ranks(
     lam: jnp.ndarray,
     gate_mode: str,
     tol_rel: float,
-    when: str,
     step: int,
 ) -> None:
     """Compute ``rank J_θ``, ``rank J_ext`` and ``Δr`` and log to MLflow.
@@ -542,7 +541,7 @@ def _log_jacobian_ranks(
         when: Tag for the metric name (``"init"``/``"trained"``).
         step: MLflow step coordinate.
     """
-    log.info(f"Computing Jacobian ranks ({when}, gate_mode={gate_mode}) ...")
+    log.info(f"Computing Jacobian ranks (gate_mode={gate_mode}) ...")
     r_theta, sv_theta, shape_theta = _jacobian_rank(
         model, theta, lam, gate_mode, argnums=(0,), tol_rel=tol_rel
     )
@@ -554,11 +553,11 @@ def _log_jacobian_ranks(
         f"  J_θ shape={shape_theta} rank={r_theta} | "
         f"J_ext shape={shape_ext} rank={r_ext} | Δr={delta_r}"
     )
-    mlflow.log_metric(f"rank.J_theta.{when}", r_theta, step=step)
-    mlflow.log_metric(f"rank.J_ext.{when}", r_ext, step=step)
-    mlflow.log_metric(f"rank.delta_r.{when}", delta_r, step=step)
-    mlflow.log_metric(f"rank.J_theta.sv_min.{when}", sv_theta, step=step)
-    mlflow.log_metric(f"rank.J_ext.sv_min.{when}", sv_ext, step=step)
+    mlflow.log_metric(f"rank.J_theta", r_theta, step=step)
+    mlflow.log_metric(f"rank.J_ext", r_ext, step=step)
+    mlflow.log_metric(f"rank.delta_r", delta_r, step=step)
+    mlflow.log_metric(f"rank.J_theta.sv_min", sv_theta, step=step)
+    mlflow.log_metric(f"rank.J_ext.sv_min", sv_ext, step=step)
 
 
 def train_model(
@@ -620,7 +619,6 @@ def train_model(
             lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
             gate_mode="pulse",
             tol_rel=rank_eval_tol_rel,
-            when="init",
             step=0,
         )
 
@@ -683,21 +681,36 @@ def train_model(
             noise_params=noise_params,
             pulse_params=params.get("pulse", None) if train_pulse else None,
         )
+        if rank_eval_enabled and step % rank_report_interval == 0:
+            # Initial / "generic" Jacobian ranks at the untrained parameters.
+            # Always evaluate in pulse mode: J_θ and J_ext are both defined w.r.t.
+            # (θ, λ) of the pulse model, with λ=ones recovering the unitary
+            # baseline coefficients
+            _log_jacobian_ranks(
+                model,
+                theta=params["unitary"],
+                lam=params.get("pulse", None) if train_pulse else None,
+                gate_mode=gate_mode,
+                tol_rel=rank_eval_tol_rel,
+                when="training",
+                step=step + 1,
+            )
+
         # log_metrics(model, data=valid_loader, step=step, prefix="valid",
         #             gate_mode=gate_mode,
         #             pulse_params=params.get("pulse", None) if train_pulse else None)
 
-    if rank_eval_enabled:
-        # Trained Jacobian ranks at the converged parameters.
-        _log_jacobian_ranks(
-            model,
-            theta=params["unitary"],
-            lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
-            gate_mode="pulse",
-            tol_rel=rank_eval_tol_rel,
-            when="trained",
-            step=max(steps - 1, 0),
-        )
+    # if rank_eval_enabled:
+    #     # Trained Jacobian ranks at the converged parameters.
+    #     _log_jacobian_ranks(
+    #         model,
+    #         theta=params["unitary"],
+    #         lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
+    #         gate_mode="pulse",
+    #         tol_rel=rank_eval_tol_rel,
+    #         when="trained",
+    #         step=max(steps - 1, 0),
+    #     )
 
     return {
         "model": model,
