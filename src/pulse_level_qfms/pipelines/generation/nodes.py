@@ -361,6 +361,8 @@ def generate_model(
     seed: int,
     decompose_circuit: bool,
     envelope: str,
+    rwa: bool,
+    frame: str,
 ) -> Dict[str, Model]:
     available_envelopes = PulseEnvelope.available()
     if envelope not in available_envelopes:
@@ -369,7 +371,9 @@ def generate_model(
             f"Available: {available_envelopes}"
         )
     PulseInformation.set_envelope(envelope)
-    mlflow.log_param("model.envelope", envelope)
+    PulseInformation.set_rwa(rwa)
+    PulseInformation.set_frame(frame)
+    log.info(f"Using pulse envelope: {envelope} with RWA={rwa} and frame={frame}")
 
     log.info(
         f"Creating model with {n_qubits} qubits, {n_layers} layers, "

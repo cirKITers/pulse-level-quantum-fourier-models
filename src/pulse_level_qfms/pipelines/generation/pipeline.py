@@ -27,6 +27,8 @@ def create_model_pipeline(**kwargs) -> Pipeline:
                     "params:model.seed",
                     "params:model.decompose_circuit",
                     "params:model.envelope",
+                    "params:model.rwa",
+                    "params:model.frame",
                 ],
                 outputs={
                     "model": "model",

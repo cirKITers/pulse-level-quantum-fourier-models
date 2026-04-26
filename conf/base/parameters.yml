@@ -20,7 +20,9 @@ model:
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]
   decompose_circuit: False
-  envelope: "drag" # one of qml_essentials.pulses.PulseEnvelope.available()
+  envelope: "gaussian"
+  rwa: True
+  frame: "lab" # ignored when rwa=True
   noise_params:
     BitFlip: 0.0
     PhaseFlip: 0.0
@@ -38,7 +40,7 @@ train:
   train_unitary: True
   train_pulse: False # must be false when decompose_circuit is true
   rank_eval:
-    enabled: True
+    enabled: False
     tol_rel: 1.0e-8
 
 fcc:
