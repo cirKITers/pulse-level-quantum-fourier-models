@@ -647,9 +647,6 @@ def train_model(
 
     for step in track(range(steps), description="Training..", total=steps):
         if rank_eval_enabled and step % rank_report_interval == 0:
-            # Initial / "generic" Jacobian ranks at the untrained parameters.
-            # (\\theta, \\lambda) of the pulse model, with \\lambda=ones recovering the unitary
-            # baseline coefficients
             _log_jacobian_ranks(
                 model,
                 theta=params["unitary"],
@@ -695,15 +692,8 @@ def train_model(
             pulse_params=params.get("pulse", None) if train_pulse else None,
         )
         
-
-        # log_metrics(model, data=valid_loader, step=step, prefix="valid",
-        #             gate_mode=gate_mode,
-        #             pulse_params=params.get("pulse", None) if train_pulse else None)
-
+    # final reporting
     if rank_eval_enabled:
-        # Initial / "generic" Jacobian ranks at the untrained parameters.
-        # (\\theta, \\lambda) of the pulse model, with \\lambda=ones recovering the unitary
-        # baseline coefficients
         _log_jacobian_ranks(
             model,
             theta=params["unitary"],
