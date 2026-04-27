@@ -22,7 +22,7 @@ model:
   decompose_circuit: False
   envelope: "gaussian"
   rwa: True
-  frame: "lab" # ignored when rwa=True
+  frame: "drive" # ignored when rwa=True
   noise_params:
     BitFlip: 0.0
     PhaseFlip: 0.0
@@ -38,7 +38,7 @@ train:
   loss_functions: ["mse"]
   loss_scalers: [1.0]
   train_unitary: True
-  train_pulse: False # must be false when decompose_circuit is true
+  train_pulse: True # must be false when decompose_circuit is true
   rank_eval:
     enabled: True
     tol_rel: 1.0e-8
