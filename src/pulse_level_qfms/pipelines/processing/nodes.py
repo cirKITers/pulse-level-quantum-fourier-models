@@ -545,28 +545,40 @@ def _log_jacobian_ranks(
         step: MLflow step coordinate.
     """
     log.info(f"Computing Jacobian ranks (gate_mode={gate_mode}) ...")
-    r_theta, sv_theta, shape_theta = _jacobian_rank(
-        model, theta, lam, gate_mode, argnums=(0,), tol_rel=tol_rel
-    )
-    mlflow.log_metric(f"rank.r_theta", r_theta, step=step)
-    mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
+    # The model's _params_validation / _pulse_params_validation stash the
+    # arguments onto ``self`` as a side effect. Under jacrev these are
+    # JAX tracers that escape the transform, leaving ``model.params`` /
+    # ``model.pulse_params`` as leaked tracers (later breaking deepcopy
+    # when Kedro saves the model). Snapshot and restore concrete values
+    # around the differentiation.
+    saved_params = model.params
+    saved_pulse_params = model.pulse_params
+    try:
+        r_theta, sv_theta, shape_theta = _jacobian_rank(
+            model, theta, lam, gate_mode, argnums=(0,), tol_rel=tol_rel
+        )
+        mlflow.log_metric(f"rank.r_theta", r_theta, step=step)
+        mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
 
-    if gate_mode != "pulse":
-        # ``J_ext`` (and Δr) is only meaningful in pulse mode where the
-        # pulse-scaling parameters λ actually influence the coefficients.
-        log.info(f"  J_θ shape={shape_theta} rank={r_theta}")
-        return
+        if gate_mode != "pulse":
+            # ``J_ext`` (and Δr) is only meaningful in pulse mode where the
+            # pulse-scaling parameters λ actually influence the coefficients.
+            log.info(f"  J_θ shape={shape_theta} rank={r_theta}")
+            return
 
-    r_ext, sv_ext, shape_ext = _jacobian_rank(
-        model, theta, lam, gate_mode, argnums=(0, 1), tol_rel=tol_rel
-    )
-    delta_r = r_ext - r_theta
-    log.info(
-        f"  J_θ shape={shape_theta} rank={r_theta} | "
-        f"J_ext shape={shape_ext} rank={r_ext} | Δr={delta_r}"
-    )
-    mlflow.log_metric(f"rank.r_ext", r_ext, step=step)
-    mlflow.log_metric(f"rank.sv_ext", sv_ext, step=step)
+        r_ext, sv_ext, shape_ext = _jacobian_rank(
+            model, theta, lam, gate_mode, argnums=(0, 1), tol_rel=tol_rel
+        )
+        delta_r = r_ext - r_theta
+        log.info(
+            f"  J_θ shape={shape_theta} rank={r_theta} | "
+            f"J_ext shape={shape_ext} rank={r_ext} | Δr={delta_r}"
+        )
+        mlflow.log_metric(f"rank.r_ext", r_ext, step=step)
+        mlflow.log_metric(f"rank.sv_ext", sv_ext, step=step)
+    finally:
+        model.params = saved_params
+        model.pulse_params = saved_pulse_params
 
 
 def train_model(
