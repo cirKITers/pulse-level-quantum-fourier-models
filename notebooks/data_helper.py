@@ -211,7 +211,7 @@ def generate_df(run_ids: List[str]):
         for metric_name in stepwise_metric_names:
             history = client.get_metric_history(run_id, metric_name)
             if not history:
-                print(f"No history for {metric_name} in {run_id}")
+                # skip silently
                 continue
             # Sort by step to keep the arrays well-ordered
             history = sorted(history, key=lambda m: m.step)
