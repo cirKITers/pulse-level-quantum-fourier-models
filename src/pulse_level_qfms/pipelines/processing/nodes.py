@@ -545,12 +545,6 @@ def _log_jacobian_ranks(
         step: MLflow step coordinate.
     """
     log.info(f"Computing Jacobian ranks (gate_mode={gate_mode}) ...")
-    # The model's _params_validation / _pulse_params_validation stash the
-    # arguments onto ``self`` as a side effect. Under jacrev these are
-    # JAX tracers that escape the transform, leaving ``model.params`` /
-    # ``model.pulse_params`` as leaked tracers (later breaking deepcopy
-    # when Kedro saves the model). Snapshot and restore concrete values
-    # around the differentiation.
     saved_params = model.params
     saved_pulse_params = model.pulse_params
     try:
