@@ -485,10 +485,8 @@ def _jacobian_rank(
         shape for diagnostics.
     """
     def _coeff_vec(theta_, lam_):
-        coeffs, _ = Coefficients.get_spectrum(
-            model,
+        coeff_kwargs = dict(
             params=theta_,
-            pulse_params=lam_,
             gate_mode=gate_mode,
             shift=False,
             trim=False,
@@ -496,6 +494,11 @@ def _jacobian_rank(
             force_mean=True,
             execution_type="expval",
         )
+        # In unitary mode the model rejects ``pulse_params``; λ has no
+        # effect on the coefficients so we simply omit it.
+        if gate_mode == "pulse":
+            coeff_kwargs["pulse_params"] = lam_
+        coeffs, _ = Coefficients.get_spectrum(model, **coeff_kwargs)
         # Stack real and imaginary parts so SVD gives a real-valued rank.
         return jnp.concatenate([coeffs.real.ravel(), coeffs.imag.ravel()])
 
@@ -545,6 +548,15 @@ def _log_jacobian_ranks(
     r_theta, sv_theta, shape_theta = _jacobian_rank(
         model, theta, lam, gate_mode, argnums=(0,), tol_rel=tol_rel
     )
+    mlflow.log_metric(f"rank.r_theta", r_theta, step=step)
+    mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
+
+    if gate_mode != "pulse":
+        # ``J_ext`` (and Δr) is only meaningful in pulse mode where the
+        # pulse-scaling parameters λ actually influence the coefficients.
+        log.info(f"  J_θ shape={shape_theta} rank={r_theta}")
+        return
+
     r_ext, sv_ext, shape_ext = _jacobian_rank(
         model, theta, lam, gate_mode, argnums=(0, 1), tol_rel=tol_rel
     )
@@ -553,9 +565,7 @@ def _log_jacobian_ranks(
         f"  J_θ shape={shape_theta} rank={r_theta} | "
         f"J_ext shape={shape_ext} rank={r_ext} | Δr={delta_r}"
     )
-    mlflow.log_metric(f"rank.r_theta", r_theta, step=step)
     mlflow.log_metric(f"rank.r_ext", r_ext, step=step)
-    mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
     mlflow.log_metric(f"rank.sv_ext", sv_ext, step=step)
 
 
@@ -608,16 +618,16 @@ def train_model(
 
     opt_state = opt.init(params)
 
-    if rank_eval_enabled and train_pulse:
-        # Initial / "generic" Jacobian ranks at the untrained parameters.
-        # Always evaluate in pulse mode: J_θ and J_ext are both defined w.r.t.
-        # (θ, λ) of the pulse model, with λ=ones recovering the unitary
-        # baseline coefficients
+    if rank_eval_enabled:
+        # Evaluate Jacobian ranks in the same regime used for training to
+        # avoid switching gate_mode on the model (which would leak JAX
+        # tracers via ``self.pulse_params`` set inside the model's
+        # ``_pulse_params_validation``).
         _log_jacobian_ranks(
             model,
             theta=params["unitary"],
             lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
-            gate_mode="pulse",
+            gate_mode=gate_mode,
             tol_rel=rank_eval_tol_rel,
             step=0,
         )
@@ -681,7 +691,7 @@ def train_model(
             noise_params=noise_params,
             pulse_params=params.get("pulse", None) if train_pulse else None,
         )
-        if rank_eval_enabled and train_pulse and step + 1 % rank_report_interval == 0:
+        if rank_eval_enabled and step + 1 % rank_report_interval == 0:
             # Initial / "generic" Jacobian ranks at the untrained parameters.
             # Always evaluate in pulse mode: J_θ and J_ext are both defined w.r.t.
             # (θ, λ) of the pulse model, with λ=ones recovering the unitary
