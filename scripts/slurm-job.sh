@@ -28,8 +28,8 @@ module load compiler/llvm
 module load devel/python/3.12.3
 
 cd ~/pulse-level-quantum-fourier-models
-source ./scripts/study-1.sh # FCC
-# source ./scripts/study-2.sh # Fidelity
-# source ./scripts/study-3.sh # Expressibility
-# source ./scripts/study-4.sh # Training
+# source ./scripts/study-1.sh # FCC (120GB/20h)
+# source ./scripts/study-2.sh # Fidelity (80GB/15h)
+# source ./scripts/study-3.sh # Expressibility (80GB/15h)
+source ./scripts/study-4.sh # Training (120GB/15h)
     
