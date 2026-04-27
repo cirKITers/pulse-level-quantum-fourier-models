@@ -120,10 +120,10 @@ def generate_df(run_ids: List[str]):
         "train_mse",
         "pulse_scaler_mean",
         "pulse_scaler_std",
-        "rank.J_theta", #r_theta
-        "rank.J_ext",   #r_ext
-        "rank.J_theta.sv_min",  #sv_theta
-        "rank.J_ext.sv_min",    #sv_ext
+        "rank.r_theta", 
+        "rank.r_ext",   
+        "rank.sv_theta",
+        "rank.sv_ext",  
     ]
 
     rows = []
