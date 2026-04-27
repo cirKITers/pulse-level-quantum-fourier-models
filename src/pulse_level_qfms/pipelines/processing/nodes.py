@@ -526,9 +526,9 @@ def _log_jacobian_ranks(
     tol_rel: float,
     step: int,
 ) -> None:
-    """Compute ``rank J_\\theta``, ``rank J_ext`` and ``Δr`` and log to MLflow.
+    """Compute ``rank J_\\theta``, ``rank J_ext`` and ``\\Delta r`` and log to MLflow.
 
-    A non-zero ``Δr = rank J_ext - rank J_\\theta`` certifies that
+    A non-zero ``\\Delta r = rank J_ext - rank J_\\theta`` certifies that
     the pulse-scaling parameters provide new search directions in
     Fourier-coefficient space beyond what the unitary parameters alone
     can reach.
@@ -554,7 +554,7 @@ def _log_jacobian_ranks(
         mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
 
         if gate_mode != "pulse":
-            # ``J_ext`` (and Δr) is only meaningful in pulse mode where the
+            # ``J_ext`` (and \\Delta r) is only meaningful in pulse mode where the
             # pulse-scaling parameters \\lambda actually influence the coefficients.
             log.info(f"  J_\\theta shape={shape_theta} rank={r_theta}")
             return
@@ -565,7 +565,7 @@ def _log_jacobian_ranks(
         delta_r = r_ext - r_theta
         log.info(
             f"  J_\\theta shape={shape_theta} rank={r_theta} | "
-            f"J_ext shape={shape_ext} rank={r_ext} | Δr={delta_r}"
+            f"J_ext shape={shape_ext} rank={r_ext} | \\Delta r={delta_r}"
         )
         mlflow.log_metric(f"rank.r_ext", r_ext, step=step)
         mlflow.log_metric(f"rank.sv_ext", sv_ext, step=step)
