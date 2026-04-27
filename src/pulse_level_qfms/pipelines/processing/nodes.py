@@ -618,20 +618,6 @@ def train_model(
 
     opt_state = opt.init(params)
 
-    if rank_eval_enabled:
-        # Evaluate Jacobian ranks in the same regime used for training to
-        # avoid switching gate_mode on the model (which would leak JAX
-        # tracers via ``self.pulse_params`` set inside the model's
-        # ``_pulse_params_validation``).
-        _log_jacobian_ranks(
-            model,
-            theta=params["unitary"],
-            lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
-            gate_mode=gate_mode,
-            tol_rel=rank_eval_tol_rel,
-            step=0,
-        )
-
     try:
         loss_functions = [getattr(Losses, loss) for loss in loss_functions]
     except AttributeError:
@@ -655,6 +641,18 @@ def train_model(
         return total_loss
 
     for step in track(range(steps), description="Training..", total=steps):
+        if rank_eval_enabled and step % rank_report_interval == 0:
+            # Initial / "generic" Jacobian ranks at the untrained parameters.
+            # (θ, λ) of the pulse model, with λ=ones recovering the unitary
+            # baseline coefficients
+            _log_jacobian_ranks(
+                model,
+                theta=params["unitary"],
+                lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
+                gate_mode=gate_mode,
+                tol_rel=rank_eval_tol_rel,
+                step=step,
+            )
 
         for domain_samples, fourier_samples, coefficients in train_loader:
             domain_samples = jnp.array(domain_samples.numpy())
@@ -691,36 +689,24 @@ def train_model(
             noise_params=noise_params,
             pulse_params=params.get("pulse", None) if train_pulse else None,
         )
-        if rank_eval_enabled and step + 1 % rank_report_interval == 0:
-            # Initial / "generic" Jacobian ranks at the untrained parameters.
-            # Always evaluate in pulse mode: J_θ and J_ext are both defined w.r.t.
-            # (θ, λ) of the pulse model, with λ=ones recovering the unitary
-            # baseline coefficients
-            _log_jacobian_ranks(
-                model,
-                theta=params["unitary"],
-                lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
-                gate_mode="pulse",
-                tol_rel=rank_eval_tol_rel,
-                when="training",
-                step=step + 1, # because we report init
-            )
+        
 
         # log_metrics(model, data=valid_loader, step=step, prefix="valid",
         #             gate_mode=gate_mode,
         #             pulse_params=params.get("pulse", None) if train_pulse else None)
 
-    # if rank_eval_enabled:
-    #     # Trained Jacobian ranks at the converged parameters.
-    #     _log_jacobian_ranks(
-    #         model,
-    #         theta=params["unitary"],
-    #         lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
-    #         gate_mode="pulse",
-    #         tol_rel=rank_eval_tol_rel,
-    #         when="trained",
-    #         step=max(steps - 1, 0),
-    #     )
+    if rank_eval_enabled:
+        # Initial / "generic" Jacobian ranks at the untrained parameters.
+        # (θ, λ) of the pulse model, with λ=ones recovering the unitary
+        # baseline coefficients
+        _log_jacobian_ranks(
+            model,
+            theta=params["unitary"],
+            lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
+            gate_mode=gate_mode,
+            tol_rel=rank_eval_tol_rel,
+            step=steps, # the last step
+        )
 
     return {
         "model": model,
