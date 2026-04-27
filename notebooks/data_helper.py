@@ -118,9 +118,12 @@ def generate_df(run_ids: List[str]):
     # list-valued columns per metric: "<metric>.steps" and "<metric>.values".
     stepwise_metric_names = [
         "train_mse",
-        "loss",
         "pulse_scaler_mean",
         "pulse_scaler_std",
+        "rank.J_theta", #r_theta
+        "rank.J_ext",   #r_ext
+        "rank.J_theta.sv_min",  #sv_theta
+        "rank.J_ext.sv_min",    #sv_ext
     ]
 
     rows = []
@@ -187,7 +190,6 @@ def generate_df(run_ids: List[str]):
             else:
                 row["train_pulse"] = False
 
-        
         row["decompose_circuit"] = False
         if "model.decompose_circuit" in run.data.params:
             row["decompose_circuit"] = run.data.params["model.decompose_circuit"].lower() == "true"
@@ -209,6 +211,7 @@ def generate_df(run_ids: List[str]):
         for metric_name in stepwise_metric_names:
             history = client.get_metric_history(run_id, metric_name)
             if not history:
+                print(f"No history for {metric_name} in {run_id}")
                 continue
             # Sort by step to keep the arrays well-ordered
             history = sorted(history, key=lambda m: m.step)
