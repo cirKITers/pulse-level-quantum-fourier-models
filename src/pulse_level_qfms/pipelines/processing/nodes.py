@@ -526,7 +526,7 @@ def _log_jacobian_ranks(
 ) -> None:
     """Compute ``rank J_θ``, ``rank J_ext`` and ``Δr`` and log to MLflow.
 
-    A non-zero ``Δr = rank J_ext − rank J_θ`` certifies that
+    A non-zero ``Δr = rank J_ext - rank J_θ`` certifies that
     the pulse-scaling parameters provide new search directions in
     Fourier-coefficient space beyond what the unitary parameters alone
     can reach.
@@ -553,11 +553,10 @@ def _log_jacobian_ranks(
         f"  J_θ shape={shape_theta} rank={r_theta} | "
         f"J_ext shape={shape_ext} rank={r_ext} | Δr={delta_r}"
     )
-    mlflow.log_metric(f"rank.J_theta", r_theta, step=step)
-    mlflow.log_metric(f"rank.J_ext", r_ext, step=step)
-    mlflow.log_metric(f"rank.delta_r", delta_r, step=step)
-    mlflow.log_metric(f"rank.J_theta.sv_min", sv_theta, step=step)
-    mlflow.log_metric(f"rank.J_ext.sv_min", sv_ext, step=step)
+    mlflow.log_metric(f"rank.r_theta", r_theta, step=step)
+    mlflow.log_metric(f"rank.r_ext", r_ext, step=step)
+    mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
+    mlflow.log_metric(f"rank.sv_ext", sv_ext, step=step)
 
 
 def train_model(
