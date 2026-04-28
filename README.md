@@ -10,7 +10,7 @@
 Note that the project currently requires python <3.13
 
 
-## Studies
+## Studies :book:
 
 We sort the different experiments in our work into the studies below.
 Each study can be run using `uv run kedro run --pipeline study-x`.
@@ -20,7 +20,7 @@ Each study can be run using `uv run kedro run --pipeline study-x`.
 - **Study-3**: Similarly to study-1 but we look at the expressibility instead.
 - **Study-4**:This study evaluates the different circuits by training on a Fourier series dataset. Here, the pulse parameters are either included in the optimization or not.
 
-## Slurm
+## Slurm :cloud:
 
 For convenience, there are scripts for running experiments located in `./scripts`.
 In `slurm-job.sh` you can specify the required resources and which study to run.
