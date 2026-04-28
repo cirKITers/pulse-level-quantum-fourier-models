@@ -3,6 +3,7 @@ results
 mlruns_bckp
 logs
 .pytest_cache
+.vscode
 ##########################
 # KEDRO PROJECT
 
