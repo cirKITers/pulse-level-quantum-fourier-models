@@ -17,21 +17,21 @@ cache = False
 
 # scenarios for plotting
 scenarios = {
-    # "study-1": {
-    #     "experiment_name": "study-1-14",
-    #     "show_error": False,
-    #     "threshold": 1e-4,
-    # },
-    # "study-2": {
-    #     "experiment_name": "study-2-2",
-    #     "show_error": False,
-    # },
-    # "study-3": {
-    #     "experiment_name": "study-3-0",
-    #     "show_error": True,
-    # },
+    "study-1": {
+        "experiment_name": "study-1-0",
+        "show_error": False,
+        "threshold": 1e-4,
+    },
+    "study-2": {
+        "experiment_name": "study-2-0",
+        "show_error": True,
+    },
+    "study-3": {
+        "experiment_name": "study-3-0",
+        "show_error": True,
+    },
     "study-4": {
-        "experiment_name": "study-4-6",
+        "experiment_name": "study-4-0",
         "show_error": True,
     },
 }

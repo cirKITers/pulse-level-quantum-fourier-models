@@ -3,7 +3,7 @@ import hashlib
 import os
 import pandas as pd
 from rich.progress import track
-from typing import List, Tuple
+from typing import List
 
 
 def get_experiments_by_name(experiment_name: str):
