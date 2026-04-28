@@ -2,7 +2,7 @@
 results
 mlruns_bckp
 logs
-
+.pytest_cache
 ##########################
 # KEDRO PROJECT
 
