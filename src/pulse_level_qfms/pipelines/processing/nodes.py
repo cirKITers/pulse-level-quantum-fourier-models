@@ -583,20 +583,26 @@ def train_model(
     loss_scalers: List,
     steps: int,
     learning_rate: float,
-    train_unitary: bool,
-    train_pulse: bool,
+    gate_mode: str = "unitary",
     pulse_learning_rate: Optional[float] = None,
     rank_eval_enabled: bool = False,
     rank_eval_tol_rel: float = 1e-8,
     rank_report_interval: int = 100,
 ) -> None:
-    gate_mode = "pulse" if train_pulse else "unitary"
+    if gate_mode not in _PULSE_GROUPS:
+        raise ValueError(
+            f"Unknown gate_mode: {gate_mode}. Use one of {list(_PULSE_GROUPS)}."
+        )
+
+    # trainable pulse scaler groups, each starting at ones
+    # (i.e. no deviation from default)
+    pulse_groups = {
+        group: jnp.ones_like(getattr(model, f"{group}_params"))
+        for group in _PULSE_GROUPS[gate_mode]
+    }
 
     # create params dict
-    params = {"unitary": model.params}
-    if train_pulse:
-        # pulse_params scaler: starts at ones (i.e. no deviation from default)
-        params["pulse"] = jnp.ones_like(model.pulse_params)
+    params = {"unitary": model.params, **pulse_groups}
 
     # set a per-group optimizer
     pulse_lr = (
@@ -604,20 +610,17 @@ def train_model(
     )
     log.info(
         f"Learning rates - unitary: {learning_rate}, "
-        f"pulse: {pulse_lr if train_pulse else 'N/A (not training pulse params)'}"
+        f"pulse: {pulse_lr if pulse_groups else 'N/A (not training pulse params)'}"
     )
 
-    if train_pulse:
+    if pulse_groups:
         # Separate optimizer chains: aggressive clipping + smaller lr for pulse
-        pulse_opt = optax.adam(pulse_lr)
-        unitary_opt = optax.adam(learning_rate)
+        transforms = {"unitary": optax.adam(learning_rate)}
+        transforms.update({k: optax.adam(pulse_lr) for k in pulse_groups})
 
         # Combine into a single optimizer keyed by the param labels
         label_fn = lambda params: {k: k for k in params}  # noqa: E731
-        opt = optax.multi_transform(
-            {"unitary": unitary_opt, "pulse": pulse_opt},
-            label_fn,
-        )
+        opt = optax.multi_transform(transforms, label_fn)
     else:
         opt = optax.adam(learning_rate)
 
@@ -630,13 +633,16 @@ def train_model(
         raise
 
     log.info(f"Using gate mode: {gate_mode} for training")
-    if train_pulse:
-        log.info(f"Pulse params are trainable (pulse_lr={pulse_lr})")
+    for group in pulse_groups:
+        log.info(f"{group}_params are trainable (pulse_lr={pulse_lr})")
 
     def cost(params_dict, targets, **kwargs):
+        # a group is absent (-> None) exactly when it is not trained; passing
+        # None keeps the model on its own params and is valid in every mode
         predictions = model(
             params=params_dict["unitary"],
-            pulse_params=params_dict.get("pulse", None) if train_pulse else None,
+            pulse_params=params_dict.get("pulse"),
+            enc_pulse_params=params_dict.get("enc_pulse"),
             **kwargs,
         )
 
@@ -673,13 +679,13 @@ def train_model(
             params = optax.apply_updates(params, updates)
 
         model.params = params["unitary"]
-        if train_pulse:
-            model.pulse_params = params["pulse"]
+        for group in pulse_groups:
+            setattr(model, f"{group}_params", params[group])
             mlflow.log_metric(
-                "pulse_scaler_mean", float(jnp.mean(params["pulse"])), step=step
+                f"{group}_scaler_mean", float(jnp.mean(params[group])), step=step
             )
             mlflow.log_metric(
-                "pulse_scaler_std", float(jnp.std(params["pulse"])), step=step
+                f"{group}_scaler_std", float(jnp.std(params[group])), step=step
             )
 
         log_metrics(
@@ -689,7 +695,8 @@ def train_model(
             prefix="train",
             gate_mode=gate_mode,
             noise_params=noise_params,
-            pulse_params=params.get("pulse", None) if train_pulse else None,
+            pulse_params=params.get("pulse"),
+            enc_pulse_params=params.get("enc_pulse"),
         )
         
     # final reporting
