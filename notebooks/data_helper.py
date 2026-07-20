@@ -182,13 +182,19 @@ def generate_df(run_ids: List[str]):
         if "train_mse" in run.data.metrics:
             row["train_mse"] = run.data.metrics["train_mse"] # this will always return the last train_mse
 
-        if "train.train_pulse" in run.data.params:
-            if run.data.params["train.train_pulse"].lower() == "true":
-                row["train_pulse"] = True
-                row["pulse_scaler_mean"] = run.data.metrics["pulse_scaler_mean"]
-                row["pulse_scaler_std"] = run.data.metrics["pulse_scaler_std"]
-            else:
-                row["train_pulse"] = False
+        if "train.gate_mode" in run.data.params:
+            row["gate_mode"] = run.data.params["train.gate_mode"]
+        elif "train.train_pulse" in run.data.params:
+            # runs logged before gate_mode replaced the train_pulse flag
+            row["gate_mode"] = (
+                "pulse"
+                if run.data.params["train.train_pulse"].lower() == "true"
+                else "unitary"
+            )
+
+        if row.get("gate_mode", "unitary") != "unitary":
+            row["pulse_scaler_mean"] = run.data.metrics["pulse_scaler_mean"]
+            row["pulse_scaler_std"] = run.data.metrics["pulse_scaler_std"]
 
         row["decompose_circuit"] = False
         if "model.decompose_circuit" in run.data.params:

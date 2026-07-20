@@ -812,13 +812,13 @@ def pulse_param_mse_comparison(
     show_error: bool = True,
 ):
     """
-    Compare the train MSE across circuits for train_pulse=True vs False.
+    Compare the train MSE across circuits for the unitary and pulse gate modes.
     Produces a grouped bar chart with circuits on the x-axis and two bars per
-    circuit (one for each train_pulse setting), including error bars over seeds.
+    circuit (one for each gate mode), including error bars over seeds.
 
     Args:
-        df (pd.DataFrame): DataFrame with columns "ansatz", "train_pulse",
-            "train_mse", "run_id", and "data.seed". 
+        df (pd.DataFrame): DataFrame with columns "ansatz", "gate_mode",
+            "train_mse", "run_id", and "data.seed".
         show_error (bool): Whether to display error bars. Defaults to True.
 
     Returns:
@@ -838,18 +838,18 @@ def pulse_param_mse_comparison(
 
     color_it = iter(design.prim_colors_lst)
     cases = [
-        (False, False, "Gate"),
-        (True, False, "+ Pulse"),
-        (False, True, "Decomposed"),
+        ("unitary", False, "Gate"),
+        ("pulse", False, "+ Pulse"),
+        ("unitary", True, "Decomposed"),
     ]
-    for train_pulse, decompose_circuit, label in cases:
+    for gate_mode, decompose_circuit, label in cases:
         color = next(color_it)
 
         means = []
         stds = []
         for ansatz in ansatzes:
             subset = df[df["ansatz"] == ansatz]
-            subset = subset[subset["train_pulse"] == train_pulse]
+            subset = subset[subset["gate_mode"] == gate_mode]
             subset = subset[subset["decompose_circuit"] == decompose_circuit]
 
             means.append(subset['train_mse'].mean())
@@ -887,8 +887,8 @@ def pulse_mean_and_variance_over_step(
 
     Args:
         df (pd.DataFrame): DataFrame with columns "run_id", "ansatz",
-            "train_pulse" and the list-valued step/value columns produced
-            by ``generate_df``.  Only rows where train_pulse is True are
+            "gate_mode" and the list-valued step/value columns produced
+            by ``generate_df``.  Only rows with a pulse-level gate mode are
             considered.
         show_error (bool): Whether to display error bars (std over seeds).
 
@@ -897,7 +897,7 @@ def pulse_mean_and_variance_over_step(
             and one for pulse_scaler_std over training steps.
     """
     # Only consider runs that actually trained pulse parameters
-    filtered_df = df[df["train_pulse"] == True]  # noqa: E712
+    filtered_df = df[df["gate_mode"] != "unitary"]
 
     ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
 
@@ -975,7 +975,7 @@ def loss_over_step(
 
     Args:
         df (pd.DataFrame): DataFrame with columns "run_id", "ansatz",
-            "train_pulse" and the list-valued step/value columns produced
+            "gate_mode" and the list-valued step/value columns produced
             by ``generate_df``.
         show_error (bool): Whether to display error bars (std over seeds).
 
@@ -992,11 +992,11 @@ def loss_over_step(
         color = next(color_it)
         ansatz_colors[ansatz] = color
 
-        for train_pulse, dash_style in [
-            (True, "solid"),
-            (False, "dash"),
+        for gate_mode, dash_style in [
+            ("pulse", "solid"),
+            ("unitary", "dash"),
         ]:
-            subset = df[(df["ansatz"] == ansatz) & (df["train_pulse"] == train_pulse)]
+            subset = df[(df["ansatz"] == ansatz) & (df["gate_mode"] == gate_mode)]
             if subset.empty:
                 continue
 
@@ -1012,7 +1012,7 @@ def loss_over_step(
             mean_vals = hist_df.mean(axis=1).values
             std_vals = hist_df.std(axis=1).values
 
-            legend_group = f"{ansatz}_{train_pulse}"
+            legend_group = f"{ansatz}_{gate_mode}"
 
             fig.add_scatter(
                 x=steps,

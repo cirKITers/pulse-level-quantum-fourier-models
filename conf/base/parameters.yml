@@ -37,8 +37,8 @@ train:
   batch_size: -1
   loss_functions: ["mse"]
   loss_scalers: [1.0]
-  train_unitary: True
-  train_pulse: True # must be false when decompose_circuit is true
+  # must be "unitary" when decompose_circuit is true
+  gate_mode: "pulse" # "unitary" | "pulse" | "all_pulse"
   rank_eval:
     enabled: True
     tol_rel: 1.0e-8
