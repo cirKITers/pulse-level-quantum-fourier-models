@@ -2,7 +2,7 @@ from qml_essentials.model import Model
 from qml_essentials.coefficients import Datasets
 from qml_essentials.ansaetze import Ansaetze, Circuit, Block, Encoding
 from qml_essentials.gates import Gates, PulseInformation, PulseEnvelope
-from qml_essentials.yaqsi import Yaqsi
+from qml_essentials.evolution import Evolution
 
 from typing import List, Dict, Tuple, Union, Callable, Optional
 from dataclasses import dataclass, field
@@ -378,7 +378,7 @@ def generate_model(
 
     if not rwa:
         log.info(f"Using magnus4 solver as RWA is not enabled.")
-        Yaqsi.set_solver_defaults(max_steps=1024, throw=False, solver="magnus4")
+        Evolution.set_solver_defaults(max_steps=1024, throw=False, solver="magnus4")
 
     log.info(
         f"Creating model with {n_qubits} qubits, {n_layers} layers, "
