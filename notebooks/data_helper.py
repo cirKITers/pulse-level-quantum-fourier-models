@@ -183,16 +183,19 @@ def generate_df(run_ids: List[str]):
             row["train_mse"] = run.data.metrics["train_mse"] # this will always return the last train_mse
 
         if "train.gate_mode" in run.data.params:
-            row["gate_mode"] = run.data.params["train.gate_mode"]
+            gate_mode = run.data.params["train.gate_mode"]
+            # runs logged while the ansatz-pulse mode was still called "pulse"
+            row["gate_mode"] = "ansatz_pulse" if gate_mode == "pulse" else gate_mode
         elif "train.train_pulse" in run.data.params:
             # runs logged before gate_mode replaced the train_pulse flag
             row["gate_mode"] = (
-                "pulse"
+                "ansatz_pulse"
                 if run.data.params["train.train_pulse"].lower() == "true"
                 else "unitary"
             )
 
-        if row.get("gate_mode", "unitary") != "unitary":
+        # enc_pulse trains only the encoding scalers, so it logs no pulse_scaler_*
+        if row.get("gate_mode", "unitary") in ("ansatz_pulse", "all_pulse"):
             row["pulse_scaler_mean"] = run.data.metrics["pulse_scaler_mean"]
             row["pulse_scaler_std"] = run.data.metrics["pulse_scaler_std"]
 

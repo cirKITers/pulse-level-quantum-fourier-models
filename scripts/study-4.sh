@@ -6,7 +6,7 @@ MAX_JOBS=20
 
 for circuit in Circuit_2 Circuit_4 Circuit_8 Circuit_14 Circuit_15 Circuit_17 Circuit_19 Circuit_20 Strongly_Entangling Circuit_3 Circuit_9 Circuit_10 Circuit_16 Circuit_18 Circuit_7 Circuit_13 Hardware_Efficient
 do
-    for gate_mode in unitary pulse
+    for gate_mode in unitary ansatz_pulse
     do
         for decompose_circuit in False True
         do

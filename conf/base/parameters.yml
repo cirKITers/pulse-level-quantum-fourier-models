@@ -15,7 +15,7 @@ model:
   circuit_type: "Circuit_3" # Hardware_Efficient Circuit_15 Circuit_17 Circuit_19
   data_reupload: True
   encoding_gates: ["RY"]
-  encoding_strategy: "ternary" # hamming (default), binary, ternary
+  encoding_strategy: "hamming" # hamming (default), binary, ternary
   output_qubit: -1
   initialization: "random"
   initialization_domain: [0, 6.283185307179586]
@@ -38,7 +38,9 @@ train:
   loss_functions: ["mse"]
   loss_scalers: [1.0]
   # must be "unitary" when decompose_circuit is true
-  gate_mode: "pulse" # "unitary" | "pulse" | "all_pulse"
+  # "unitary" | "ansatz_pulse" | "enc_pulse" | "all_pulse"
+  # ansatz_pulse and all_pulse must not be used when decompose_circuit is true
+  gate_mode: "all_pulse"
   rank_eval:
     enabled: True
     tol_rel: 1.0e-8

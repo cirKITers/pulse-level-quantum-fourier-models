@@ -839,7 +839,7 @@ def pulse_param_mse_comparison(
     color_it = iter(design.prim_colors_lst)
     cases = [
         ("unitary", False, "Gate"),
-        ("pulse", False, "+ Pulse"),
+        ("ansatz_pulse", False, "+ Pulse"),
         ("unitary", True, "Decomposed"),
     ]
     for gate_mode, decompose_circuit, label in cases:
@@ -896,8 +896,8 @@ def pulse_mean_and_variance_over_step(
         tuple[go.Figure, go.Figure]: Two figures – one for pulse_scaler_mean
             and one for pulse_scaler_std over training steps.
     """
-    # Only consider runs that actually trained pulse parameters
-    filtered_df = df[df["gate_mode"] != "unitary"]
+    # Only consider runs that actually trained ansatz pulse parameters
+    filtered_df = df[df["gate_mode"].isin(["ansatz_pulse", "all_pulse"])]
 
     ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
 
@@ -993,7 +993,7 @@ def loss_over_step(
         ansatz_colors[ansatz] = color
 
         for gate_mode, dash_style in [
-            ("pulse", "solid"),
+            ("ansatz_pulse", "solid"),
             ("unitary", "dash"),
         ]:
             subset = df[(df["ansatz"] == ansatz) & (df["gate_mode"] == gate_mode)]
