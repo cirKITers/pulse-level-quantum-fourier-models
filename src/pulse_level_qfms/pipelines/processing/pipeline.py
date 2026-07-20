@@ -105,7 +105,7 @@ def create_training_pipeline(**kwargs) -> Pipeline:
                     "rank_report_interval": "params:train.rank_eval.report_interval",
                 },
                 outputs={
-                    "model": "trained_model",
+                    # "model": "trained_model",
                 },
             ),
         ]
