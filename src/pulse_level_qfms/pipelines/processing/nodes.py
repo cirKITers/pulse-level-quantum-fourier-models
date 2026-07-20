@@ -25,6 +25,11 @@ import logging
 
 log = logging.getLogger(__name__)
 
+_PULSE_GROUPS = {
+    "unitary": (),
+    "pulse": ("pulse",),
+    "all_pulse": ("pulse", "enc_pulse"),
+}
 
 class PulseFCC(FCC):
     def get_fourier_fingerprint(
@@ -410,6 +415,7 @@ def log_metrics(
     gate_mode="unitary",
     noise_params=None,
     pulse_params=None,
+    enc_pulse_params=None,
 ):
     domain_samples = data.dataset.tensors[0].numpy()
     fourier_series = data.dataset.tensors[1].numpy()
@@ -422,6 +428,7 @@ def log_metrics(
         force_mean=True,
         gate_mode=gate_mode,
         pulse_params=pulse_params,
+        enc_pulse_params=enc_pulse_params,
         noise_params=noise_params,
     )
     predicted_coeffs = Coefficients.get_spectrum(
@@ -432,6 +439,7 @@ def log_metrics(
         force_mean=True,
         gate_mode=gate_mode,
         pulse_params=pulse_params,
+        enc_pulse_params=enc_pulse_params,
         noise_params=noise_params,
     )[
         0
@@ -470,7 +478,7 @@ def _jacobian_rank(
         theta: Unitary parameter vector ``\\theta`` (shape as in ``model.params``).
         lam: Pulse-scaling parameter vector ``\\lambda`` (shape as in
             ``model.pulse_params``).
-        gate_mode: ``"pulse"`` or ``"unitary"``
+        gate_mode: ``"unitary"``, ``"pulse"`` or ``"all_pulse"``
         argnums: Subset of ``(0, 1)`` indicating which arguments to
             differentiate w.r.t. — ``(0,)`` gives ``J_\\theta``, ``(0, 1)``
             gives ``J_ext``.
@@ -495,7 +503,7 @@ def _jacobian_rank(
         )
         # In unitary mode the model rejects ``pulse_params``; \\lambda has no
         # effect on the coefficients so we simply omit it.
-        if gate_mode == "pulse":
+        if gate_mode in ("pulse", "all_pulse"):
             coeff_kwargs["pulse_params"] = lam_
         coeffs, _ = Coefficients.get_spectrum(model, **coeff_kwargs)
         # Stack real and imaginary parts so SVD gives a real-valued rank.
@@ -537,8 +545,8 @@ def _log_jacobian_ranks(
         model: The model whose autodiff is exercised.
         theta: Current unitary parameters.
         lam: Current pulse-scaling parameters.
-        gate_mode: ``"pulse"`` or ``"unitary"`` — the regime in which
-            ranks are evaluated.
+        gate_mode: ``"unitary"``, ``"pulse"`` or ``"all_pulse"`` — the regime
+            in which ranks are evaluated.
         tol_rel: Relative SVD cutoff used for the numerical rank.
         when: Tag for the metric name (``"init"``/``"trained"``).
         step: MLflow step coordinate.
@@ -546,6 +554,7 @@ def _log_jacobian_ranks(
     log.info(f"Computing Jacobian ranks (gate_mode={gate_mode}) ...")
     saved_params = model.params
     saved_pulse_params = model.pulse_params
+    saved_enc_pulse_params = model.enc_pulse_params
     try:
         r_theta, sv_theta, shape_theta = _jacobian_rank(
             model, theta, lam, gate_mode, argnums=(0,), tol_rel=tol_rel
@@ -553,7 +562,7 @@ def _log_jacobian_ranks(
         mlflow.log_metric(f"rank.r_theta", r_theta, step=step)
         mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
 
-        if gate_mode != "pulse":
+        if gate_mode == "unitary":
             # ``J_ext`` (and \\Delta r) is only meaningful in pulse mode where the
             # pulse-scaling parameters \\lambda actually influence the coefficients.
             log.info(f"  J_\\theta shape={shape_theta} rank={r_theta}")
@@ -572,6 +581,7 @@ def _log_jacobian_ranks(
     finally:
         model.params = saved_params
         model.pulse_params = saved_pulse_params
+        model.enc_pulse_params = saved_enc_pulse_params
 
 
 def train_model(
