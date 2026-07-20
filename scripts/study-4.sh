@@ -6,12 +6,12 @@ MAX_JOBS=20
 
 for circuit in Circuit_2 Circuit_4 Circuit_8 Circuit_14 Circuit_15 Circuit_17 Circuit_19 Circuit_20 Strongly_Entangling Circuit_3 Circuit_9 Circuit_10 Circuit_16 Circuit_18 Circuit_7 Circuit_13 Hardware_Efficient
 do
-    for train_pulse in False True
+    for gate_mode in unitary pulse
     do
         for decompose_circuit in False True
         do
             # skip those combinations
-            if [[ "$train_pulse" == "True" && "$decompose_circuit" == "True" ]]; then
+            if [[ "$gate_mode" != "unitary" && "$decompose_circuit" == "True" ]]; then
                 continue
             fi
 
@@ -22,8 +22,8 @@ do
                     sleep 10
                 done
 
-                echo "--- $circuit Ansatz, Train Pulse=$train_pulse, Decompose $decompose_circuit, Seed $seed ---"
-                uv run kedro run --pipeline "study-4" --params="data.seed=$seed,model.circuit_type=$circuit,model.decompose_circuit=$decompose_circuit,train.train_pulse=$train_pulse" &
+                echo "--- $circuit Ansatz, Gate Mode=$gate_mode, Decompose $decompose_circuit, Seed $seed ---"
+                uv run kedro run --pipeline "study-4" --params="data.seed=$seed,model.circuit_type=$circuit,model.decompose_circuit=$decompose_circuit,train.gate_mode=$gate_mode" &
 
                 sleep 20
             done
