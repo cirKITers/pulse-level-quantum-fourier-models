@@ -177,6 +177,167 @@ def viz_study_4(df, show_error):
     return figures
 
 
+def viz_study_5(df, max_distortion, show_error):
+    figures = []
+
+    figures.extend(spectrum_over_distortion(df, max_distortion, show_error))
+    figures.append(offgrid_mass_over_distortion(df, max_distortion, show_error))
+
+    return figures
+
+
+def _coeff_columns(df: pd.DataFrame, prefix: str = "coeff.mean.f"):
+    """Return the coefficient columns of `df` with their frequencies.
+
+    The frequency is encoded in the column name, so a spectrum sampled with
+    $mts > 1$ yields non-integer entries here. Sorted by frequency so the
+    columns can be plotted directly against it.
+
+    Args:
+        df (pd.DataFrame): DataFrame carrying the coefficient columns.
+        prefix (str): Column name prefix to match.
+
+    Returns:
+        tuple[list[str], list[float]]: Column names and their frequencies.
+    """
+    cols = [c for c in df.columns if c.startswith(prefix)]
+    freqs = [float(c.split(prefix)[1]) for c in cols]
+    order = np.argsort(freqs)
+
+    return [cols[i] for i in order], [freqs[i] for i in order]
+
+
+def spectrum_over_distortion(df: pd.DataFrame, max_distortion, show_error):
+    """
+    Plot the coefficient magnitude over frequency, one trace per pulse
+    parameter variance, for each ansatz.
+
+    The frequency axis is oversampled (see the `mts` parameter of the
+    spectrum study), so the bins between the integers are the ones that can
+    only be populated once the encoding gates acquire a frequency shift.
+    An undistorted model puts all of its mass on the integer bins, so any
+    growth in between is the effect under test.
+
+    Args:
+        df (pd.DataFrame): DataFrame with coeff.mean.f* columns,
+            ``ansatz`` and ``pulse_params_variance``.
+        max_distortion: Upper bound on pulse_params_variance to include.
+        show_error: Whether to display error bars (std over seeds).
+
+    Returns:
+        List[go.Figure]: One figure per ansatz.
+    """
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion]
+    coeff_cols, freqs = _coeff_columns(filtered_df)
+
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
+    variances = sorted(filtered_df["pulse_params_variance"].unique())
+    colors = plotly.colors.sample_colorscale(design.seq_colors, len(variances))
+
+    figures = []
+    for ansatz in ansatzes[:10]:
+        ansatz_df = filtered_df[filtered_df["ansatz"] == ansatz]
+
+        fig = go.Figure()
+        for variance, color in zip(variances, colors):
+            subset = ansatz_df[ansatz_df["pulse_params_variance"] == variance]
+            if subset.empty:
+                continue
+
+            # average over seeds, keeping the frequency axis
+            means = subset[coeff_cols].mean()
+            stds = subset[coeff_cols].std()
+
+            fig.add_scatter(
+                x=freqs,
+                y=means.values,
+                error_y=dict(type="data", array=stds.values, visible=show_error),
+                mode="lines+markers",
+                name=f"{variance}",
+                line=dict(color=color, width=design.marker_line_width),
+                marker=dict(size=design.marker_size / 3),
+            )
+
+        fig.update_yaxes(type="log")
+        # only the integer frequencies carry a label, the bins in between
+        # are the ones the distortion fills in
+        fig.update_xaxes(
+            tickmode="array",
+            tickvals=[f for f in freqs if f == int(f)],
+        )
+
+        fig.update_layout(
+            title=f"Spectrum over PP Var. - {circuit_name_to_str(ansatz)}",
+            xaxis_title="Frequency",
+            yaxis_title="Mean |c|",
+            template=design.template,
+            font=dict(size=design.font_size),
+            legend=design.horizontal_legend(),
+        )
+
+        figures.append(fig)
+
+    return figures
+
+
+def offgrid_mass_over_distortion(df: pd.DataFrame, max_distortion, show_error):
+    """
+    Plot the share of coefficient magnitude sitting on non-integer
+    frequencies over the pulse parameter variance.
+
+    This condenses the spectrum into the single quantity the hypothesis is
+    about: an undistorted model is supported on the integer frequencies
+    alone, so a rising off-grid share means the encoding gates shifted the
+    frequencies away from that grid.
+
+    Args:
+        df (pd.DataFrame): DataFrame with coeff.mean.f* columns,
+            ``ansatz`` and ``pulse_params_variance``.
+        max_distortion: Upper bound on pulse_params_variance to include.
+        show_error: Whether to display error bars (std over seeds).
+    """
+    fig = go.Figure()
+
+    filtered_df = df[df["pulse_params_variance"] <= max_distortion].copy()
+    coeff_cols, freqs = _coeff_columns(filtered_df)
+    off_cols = [c for c, f in zip(coeff_cols, freqs) if f != int(f)]
+
+    filtered_df["offgrid_mass"] = (
+        filtered_df[off_cols].sum(axis=1) / filtered_df[coeff_cols].sum(axis=1)
+    )
+
+    ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
+    color_it = iter(design.prim_colors_lst)
+
+    for ansatz in ansatzes[:10]:
+        circuit_df = filtered_df[filtered_df["ansatz"] == ansatz]
+
+        # average the off-grid mass over different seeds for a given distortion
+        grouped_df = circuit_df.groupby("pulse_params_variance").offgrid_mass
+        mean_mass = grouped_df.mean()
+        std_mass = grouped_df.std()
+
+        fig.add_scatter(
+            x=mean_mass.index,
+            y=mean_mass.values,
+            error_y=dict(type="data", array=std_mass.values, visible=show_error),
+            mode="lines",
+            name=f"{circuit_name_to_str(ansatz)}",
+            line=dict(color=next(color_it), width=design.marker_line_width),
+        )
+
+    fig.update_layout(
+        title="Off-Grid Mass over PP Variances",
+        xaxis_title="Pulse Parameter Variances",
+        yaxis_title="Off-Grid Mass",
+        template=design.template,
+        font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
+    )
+
+    return fig
+
+
 def coeff_mean_over_distortion(df: pd.DataFrame, max_distortion, show_error):
     """
     Given a dataframe with fccs for different distortions,

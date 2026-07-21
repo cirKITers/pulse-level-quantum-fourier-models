@@ -172,6 +172,14 @@ def generate_df(run_ids: List[str]):
                 run.data.params["fcc.pulse_params_variance"]
             )
 
+        # the spectrum study logs no scalar summary metric, so key off the
+        # parameter instead
+        if "spectrum.pulse_params_variance" in run.data.params:
+            row["spectrum.seed"] = int(run.data.params["spectrum.seed"])
+            row["pulse_params_variance"] = float(
+                run.data.params["spectrum.pulse_params_variance"]
+            )
+
         if "expressibility" in run.data.metrics:
             row["expressibility"] = float(run.data.metrics["expressibility"])
             row["expressibility.seed"] = int(run.data.params["expressibility.seed"])

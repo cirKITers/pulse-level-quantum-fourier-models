@@ -10,6 +10,7 @@ from viz_helper import (
     viz_study_2,
     viz_study_3,
     viz_study_4,
+    viz_study_5,
 )
 
 # enable caching?
@@ -32,6 +33,10 @@ scenarios = {
     },
     "study-4": {
         "experiment_name": "study-4-0",
+        "show_error": True,
+    },
+    "study-5": {
+        "experiment_name": "study-5-0",
         "show_error": True,
     },
 }
@@ -88,6 +93,12 @@ for scenario, setting in scenarios.items():
     elif scenario == "study-4":
         figures = viz_study_4(
             df,
+            show_error=setting["show_error"],
+        )
+    elif scenario == "study-5":
+        figures = viz_study_5(
+            df,
+            max_distortion=max_distortion,
             show_error=setting["show_error"],
         )
 
