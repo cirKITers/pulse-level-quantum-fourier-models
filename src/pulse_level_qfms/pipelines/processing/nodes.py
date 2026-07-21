@@ -37,65 +37,7 @@ _PULSE_GROUPS = {
 _GROUP_ARGNUM = {"pulse": 1, "enc_pulse": 2}
 
 class PulseFCC(FCC):
-    def get_fourier_fingerprint(
-        model: Model,
-        n_samples: int,
-        seed: int,
-        method: Optional[str] = "pearson",
-        scale: Optional[bool] = False,
-        weight: Optional[bool] = False,
-        trim_redundant: Optional[bool] = True,
-        **kwargs,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        """
-        Shortcut method to get just the fourier fingerprint.
-        This includes
-        1. Calculating the coefficients (using `n_samples` and `seed`)
-        2. Correlating the result from 1) using `method`
-        3. Weighting the correlation matrix (if `weight` is True)
-        4. Remove redundancies (if `trim_redundant` is True)
-
-        Args:
-            model (Model): The QFM model
-            n_samples (int): Number of samples to calculate average of coefficients
-            seed (int): Seed to initialize random parameters
-            method (Optional[str], optional): Correlation method. Defaults to "pearson".
-            scale (Optional[bool], optional): Whether to scale the number of samples.
-                Defaults to False.
-            weight (Optional[bool], optional): Whether to weight the correlation matrix.
-                Defaults to False.
-            trim_redundant (Optional[bool], optional): Whether to remove redundant
-                correlations. Defaults to True.
-            **kwargs: Additional keyword arguments for the model function.
-
-        Returns:
-            Tuple[jnp.ndarray, jnp.ndarray]: The fourier fingerprint
-            and the frequency indices
-        """
-        _, coeffs, freqs = PulseFCC._calculate_coefficients(
-            model, n_samples, seed, scale, **kwargs
-        )
-        fourier_fingerprint = FCC._correlate(coeffs.transpose(), method=method)
-
-        # perform weighting if requested
-        fourier_fingerprint = (
-            FCC._weighting(fourier_fingerprint) if weight else fourier_fingerprint
-        )
-
-        if trim_redundant:
-            mask = FCC._calculate_mask(freqs)
-
-            # apply the mask on the fingerprint
-            fourier_fingerprint = mask * fourier_fingerprint
-
-            row_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=1)
-            col_mask = jnp.any(jnp.isfinite(fourier_fingerprint), axis=0)
-
-            fourier_fingerprint = fourier_fingerprint[row_mask][:, col_mask]
-
-        return fourier_fingerprint, freqs
-
-    @staticmethod
+    @classmethod
     def _calculate_coefficients(
         model: Model,
         n_samples: int,
@@ -388,7 +330,6 @@ def calculate_fcc(
 ):
     log.info(f"Seed for FCC: {seed}")
 
-    # call our modified class to calculate the fourier fingerprint
     fourier_fingerprint, _ = PulseFCC.get_fourier_fingerprint(
         model,
         n_samples,
