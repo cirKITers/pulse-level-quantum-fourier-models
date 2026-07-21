@@ -459,6 +459,7 @@ def _jacobian_rank(
     model: Model,
     theta: jnp.ndarray,
     lam: jnp.ndarray,
+    eta: jnp.ndarray,
     gate_mode: str,
     argnums: Tuple[int, ...],
     tol_rel: float,
@@ -476,12 +477,16 @@ def _jacobian_rank(
     Args:
         model: Already-instantiated quantum Fourier model.
         theta: Unitary parameter vector ``\\theta`` (shape as in ``model.params``).
-        lam: Pulse-scaling parameter vector ``\\lambda`` (shape as in
+        lam: Ansatz pulse-scaling parameter vector ``\\lambda`` (shape as in
             ``model.pulse_params``).
-        gate_mode: ``"unitary"``, ``"pulse"`` or ``"all_pulse"``
-        argnums: Subset of ``(0, 1)`` indicating which arguments to
-            differentiate w.r.t. — ``(0,)`` gives ``J_\\theta``, ``(0, 1)``
-            gives ``J_ext``.
+        eta: Encoding pulse-scaling parameter vector ``\\eta`` (shape as in
+            ``model.enc_pulse_params``).
+        gate_mode: ``"unitary"``, ``"ansatz_pulse"``, ``"enc_pulse"`` or
+            ``"all_pulse"``
+        argnums: Subset of ``(0, 1, 2)`` indicating which arguments to
+            differentiate w.r.t. — ``(0,)`` gives ``J_\\theta``, adding the
+            argnums of the groups the mode runs at pulse level gives
+            ``J_ext``.
         tol_rel: Relative tolerance for the numerical rank.
 
     Returns:
@@ -491,7 +496,9 @@ def _jacobian_rank(
         zero) and ``jacobian_shape`` records the flattened Jacobian
         shape for diagnostics.
     """
-    def _coeff_vec(theta_, lam_):
+    groups = _PULSE_GROUPS[gate_mode]
+
+    def _coeff_vec(theta_, lam_, eta_):
         coeff_kwargs = dict(
             params=theta_,
             gate_mode=gate_mode,
@@ -501,15 +508,31 @@ def _jacobian_rank(
             force_mean=True,
             execution_type="expval",
         )
-        # In unitary mode the model rejects ``pulse_params``; \\lambda has no
-        # effect on the coefficients so we simply omit it.
-        if gate_mode in ("pulse", "all_pulse"):
+        # The model rejects a scaler group that its gate_mode does not run at
+        # pulse level, and such a group is inert on the coefficients anyway,
+        # so only the groups the mode owns are passed through.
+        if "pulse" in groups:
             coeff_kwargs["pulse_params"] = lam_
+        if "enc_pulse" in groups:
+            coeff_kwargs["enc_pulse_params"] = eta_
         coeffs, _ = Coefficients.get_spectrum(model, **coeff_kwargs)
         # Stack real and imaginary parts so SVD gives a real-valued rank.
         return jnp.concatenate([coeffs.real.ravel(), coeffs.imag.ravel()])
 
-    jac = jax.jacrev(_coeff_vec, argnums=argnums)(theta, lam)
+    # The model stores whatever params it is called with on itself, so under
+    # jacrev it ends up holding tracers that are dead once the transform
+    # returns. Restore the concrete values, otherwise a later call that falls
+    # back to a model attribute raises UnexpectedTracerError.
+    saved = {
+        name: getattr(model, name)
+        for name in ("params", "pulse_params", "enc_pulse_params")
+    }
+    try:
+        jac = jax.jacrev(_coeff_vec, argnums=argnums)(theta, lam, eta)
+    finally:
+        for name, value in saved.items():
+            setattr(model, name, value)
+
     if isinstance(jac, tuple):
         # Flatten each block on its parameter axes and concatenate columns.
         blocks = [j.reshape(j.shape[0], -1) for j in jac]
@@ -530,6 +553,7 @@ def _log_jacobian_ranks(
     model: Model,
     theta: jnp.ndarray,
     lam: jnp.ndarray,
+    eta: jnp.ndarray,
     gate_mode: str,
     tol_rel: float,
     step: int,
@@ -544,44 +568,44 @@ def _log_jacobian_ranks(
     Args:
         model: The model whose autodiff is exercised.
         theta: Current unitary parameters.
-        lam: Current pulse-scaling parameters.
-        gate_mode: ``"unitary"``, ``"pulse"`` or ``"all_pulse"`` — the regime
-            in which ranks are evaluated.
+        lam: Current ansatz pulse-scaling parameters ``\\lambda``.
+        eta: Current encoding pulse-scaling parameters ``\\eta``.
+        gate_mode: ``"unitary"``, ``"ansatz_pulse"``, ``"enc_pulse"`` or
+            ``"all_pulse"`` — the regime in which ranks are evaluated.
+            ``J_ext`` extends ``J_\\theta`` by exactly the scaler groups the
+            mode runs at pulse level, so ``\\Delta r`` is reported for every
+            mode except ``"unitary"``, which has no such group.
         tol_rel: Relative SVD cutoff used for the numerical rank.
         when: Tag for the metric name (``"init"``/``"trained"``).
         step: MLflow step coordinate.
     """
     log.info(f"Computing Jacobian ranks (gate_mode={gate_mode}) ...")
-    saved_params = model.params
-    saved_pulse_params = model.pulse_params
-    saved_enc_pulse_params = model.enc_pulse_params
-    try:
-        r_theta, sv_theta, shape_theta = _jacobian_rank(
-            model, theta, lam, gate_mode, argnums=(0,), tol_rel=tol_rel
-        )
-        mlflow.log_metric(f"rank.r_theta", r_theta, step=step)
-        mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
+    # _jacobian_rank restores the model's parameter attributes itself
+    r_theta, sv_theta, shape_theta = _jacobian_rank(
+        model, theta, lam, eta, gate_mode, argnums=(0,), tol_rel=tol_rel
+    )
+    mlflow.log_metric(f"rank.r_theta", r_theta, step=step)
+    mlflow.log_metric(f"rank.sv_theta", sv_theta, step=step)
 
-        if gate_mode == "unitary":
-            # ``J_ext`` (and \\Delta r) is only meaningful in pulse mode where the
-            # pulse-scaling parameters \\lambda actually influence the coefficients.
-            log.info(f"  J_\\theta shape={shape_theta} rank={r_theta}")
-            return
+    # extend J_\theta by the scaler groups this mode actually runs at
+    # pulse level, i.e. \\lambda, \\eta or both
+    extra_argnums = tuple(_GROUP_ARGNUM[group] for group in _PULSE_GROUPS[gate_mode])
+    if not extra_argnums:
+        # "unitary" has no pulse scalers, so J_ext would equal J_\theta.
+        log.info(f"  J_\\theta shape={shape_theta} rank={r_theta}")
+        return
 
-        r_ext, sv_ext, shape_ext = _jacobian_rank(
-            model, theta, lam, gate_mode, argnums=(0, 1), tol_rel=tol_rel
-        )
-        delta_r = r_ext - r_theta
-        log.info(
-            f"  J_\\theta shape={shape_theta} rank={r_theta} | "
-            f"J_ext shape={shape_ext} rank={r_ext} | \\Delta r={delta_r}"
-        )
-        mlflow.log_metric(f"rank.r_ext", r_ext, step=step)
-        mlflow.log_metric(f"rank.sv_ext", sv_ext, step=step)
-    finally:
-        model.params = saved_params
-        model.pulse_params = saved_pulse_params
-        model.enc_pulse_params = saved_enc_pulse_params
+    r_ext, sv_ext, shape_ext = _jacobian_rank(
+        model, theta, lam, eta, gate_mode, argnums=(0,) + extra_argnums,
+        tol_rel=tol_rel,
+    )
+    delta_r = r_ext - r_theta
+    log.info(
+        f"  J_\\theta shape={shape_theta} rank={r_theta} | "
+        f"J_ext shape={shape_ext} rank={r_ext} | \\Delta r={delta_r}"
+    )
+    mlflow.log_metric(f"rank.r_ext", r_ext, step=step)
+    mlflow.log_metric(f"rank.sv_ext", sv_ext, step=step)
 
 
 def train_model(
