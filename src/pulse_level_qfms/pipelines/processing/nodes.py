@@ -375,13 +375,15 @@ def calculate_fcc(
     scale: bool,
     method: str,
     weighting: bool,
-    sample_axis: str,
+    sample_axis: List[str],
     pulse_params_variance: float,
     numerical_cap: float,
 ):
     log.info(f"Seed for FCC: {seed}")
+    log.info(f"Sample axis: {sample_axis}")
 
-    fourier_fingerprint, _ = PulseFCC.get_fourier_fingerprint(
+    # gate_mode is derived from sample_axis, see _calculate_coefficients
+    fourier_fingerprint, freqs, coeffs = PulseFCC.get_fourier_fingerprint(
         model,
         n_samples,
         seed,
@@ -402,6 +404,62 @@ def calculate_fcc(
     return {
         "fcc": fcc,
     }
+
+
+def calculate_spectrum(
+    model: Model,
+    seed: int,
+    n_samples: int,
+    scale: bool,
+    sample_axis: List[str],
+    pulse_params_variance: float,
+    mfs: int,
+    mts: int,
+):
+    """
+    Logs the frequency spectrum of the model under pulse distortion.
+
+    Oversamples the frequency axis by `mts`, which gives a bin spacing of
+    $1/mts$ instead of the integer grid used for the FCC. Only on such a
+    grid can a frequency shift be told apart from a pure change in
+    amplitude, since an integer grid has no bins for the shifted
+    components to occupy.
+
+    The per-frequency metrics are logged by
+    :meth:`PulseFCC._calculate_coefficients`.
+
+    Args:
+        model (Model): The QFM model
+        seed (int): Seed to initialize random parameters
+        n_samples (int): Number of samples to average the coefficients over
+        scale (bool): Whether to scale the number of samples
+        sample_axis (List[str]): Which quantities are randomised across the
+            samples, see :meth:`PulseFCC._calculate_coefficients`
+        pulse_params_variance (float): Variance of the pulse scalers
+        mfs (int): Multiplicator for the highest frequency
+        mts (int): Multiplicator for the number of time samples, i.e. the
+            frequency resolution
+    """
+    log.info(f"Seed for spectrum: {seed}")
+    log.info(f"Sample axis: {sample_axis}, mfs={mfs}, mts={mts}")
+
+    # gate_mode is derived from sample_axis, see _calculate_coefficients.
+    # numerical_cap is disabled so that every run reports the same frequency
+    # grid: with a cap, the bins that vanish at zero variance would be
+    # dropped and the runs could no longer be aggregated per frequency.
+    PulseFCC._calculate_coefficients(
+        model,
+        n_samples,
+        seed,
+        scale,
+        sample_axis=sample_axis,
+        pulse_params_variance=pulse_params_variance,
+        numerical_cap=-1,
+        mfs=mfs,
+        mts=mts,
+    )
+
+    return {}
 
 
 def log_metrics(
@@ -796,7 +854,7 @@ def evaluate_fidelity(
     mlflow.log_metric("trace-distance", jnp.mean(td))
 
     return {
-        "fidelity": fidelity,
+        "fidelity": fi,
     }
 
 
