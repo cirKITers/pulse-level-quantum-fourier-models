@@ -16,6 +16,7 @@ Each study can be run using `uv run kedro run --pipeline study-x`.
 - **Study-2**: In this study, we evaluate how the fidelity and trace distance changes when the pulse parameters are perturbed.
 - **Study-3**: Similarly to study-1 but we look at the expressibility instead.
 - **Study-4**:This study evaluates the different circuits by training on a Fourier series dataset. Here, the pulse parameters are either included in the optimization or not.
+- **Study-5**: This study perturbs the pulse parameters of the encoding gates only, while the ansatz runs as a unitary, and looks at where the resulting Fourier coefficients sit.
 
 You can associate an MlFlow experiment to a study by setting the name of the study in `./conf/local/mlflow.yml` under `tracking.experiment.name`.
 
