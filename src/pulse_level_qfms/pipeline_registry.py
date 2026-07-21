@@ -15,6 +15,9 @@ from .pipelines.processing.pipeline import (
     create_fcc_pipeline as processing_fcc_pipeline,
 )
 from .pipelines.processing.pipeline import (
+    create_spectrum_pipeline as processing_spectrum_pipeline,
+)
+from .pipelines.processing.pipeline import (
     create_fidelity_pipeline as processing_fidelity_pipeline,
 )
 from .pipelines.processing.pipeline import (
@@ -48,5 +51,7 @@ def register_pipelines() -> dict[str, Pipeline]:
         + processing_training_pipeline()
         + visualization_training_pipeline()
     )
+
+    pipelines["study-5"] = generation_model_pipeline() + processing_spectrum_pipeline()
 
     return pipelines

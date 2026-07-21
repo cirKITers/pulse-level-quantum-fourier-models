@@ -2,6 +2,7 @@ from kedro.pipeline import Node, Pipeline
 
 from pulse_level_qfms.pipelines.processing.nodes import (
     calculate_fcc,
+    calculate_spectrum,
     train_model,
     evaluate_fidelity,
     evaluate_expressibility,
@@ -29,6 +30,29 @@ def create_fcc_pipeline(**kwargs) -> Pipeline:
                 outputs={
                     "fcc": "fcc",
                 },
+            ),
+        ]
+    )
+
+
+def create_spectrum_pipeline(**kwargs) -> Pipeline:
+    return Pipeline(
+        [
+            Node(
+                calculate_spectrum,
+                name="calculate_spectrum",
+                tags=["processing"],
+                inputs=[
+                    "model",
+                    "params:spectrum.seed",
+                    "params:spectrum.n_samples",
+                    "params:spectrum.scale",
+                    "params:spectrum.sample_axis",
+                    "params:spectrum.pulse_params_variance",
+                    "params:spectrum.mfs",
+                    "params:spectrum.mts",
+                ],
+                outputs={},
             ),
         ]
     )

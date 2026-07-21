@@ -39,7 +39,7 @@ train:
   loss_scalers: [1.0]
   # must be "unitary" when decompose_circuit is true
   # "unitary" | "ansatz_pulse" | "enc_pulse" | "all_pulse"
-  gate_mode: "all_pulse"
+  gate_mode: "ansatz_pulse"
   rank_eval:
     enabled: True
     tol_rel: 1.0e-8
@@ -48,12 +48,31 @@ train:
 fcc:
   seed: 1000
   n_samples: 500
+  # subset of "unitary" | "pulse" | "enc_pulse", matched exactly.
+  # the pulse entries also select the regime the coefficients are computed in:
+  # neither -> unitary, "pulse" -> ansatz_pulse, "enc_pulse" -> enc_pulse,
+  # both -> all_pulse
   sample_axis: ["unitary", "pulse"]
   pulse_params_variance: 0.008
   method: "pearson"
   weighting: False
   scale: True
   numerical_cap: 1e-10
+
+spectrum:
+  seed: 1000
+  n_samples: 500
+  # subset of "unitary" | "pulse" | "enc_pulse", matched exactly.
+  # "enc_pulse" selects the enc_pulse regime, i.e. the ansatz runs as a
+  # unitary while only the encoding gates run at pulse level
+  sample_axis: ["unitary", "enc_pulse"]
+  pulse_params_variance: 0.008
+  scale: False
+  # frequency oversampling. mts sets the bin spacing to 1/mts, which is what
+  # makes a frequency shift resolvable at all. Keep it a power of two so the
+  # frequency values, and with them the metric names, stay exact.
+  mfs: 1
+  mts: 4
 
 fidelity:
   seed: 1000
