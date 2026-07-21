@@ -36,21 +36,32 @@ _PULSE_GROUPS = {
 # function, i.e. the ``argnums`` handle used to extend ``J_\theta``
 _GROUP_ARGNUM = {"pulse": 1, "enc_pulse": 2}
 
+# batch axis each pulse scaler group owns in ``model.repeat_batch_axis``,
+# which is ordered [inputs, params, pulse_params, enc_pulse_params]
+_GROUP_BATCH_AXIS = {"pulse": 2, "enc_pulse": 3}
+
+# inverse of _PULSE_GROUPS, i.e. the mode that runs exactly the given pulse
+# groups. Used to derive the gate mode from the sampled quantities, since
+# running a group at pulse level without perturbing it reproduces the unitary
+# result (the pulses are calibrated to the ideal gates).
+_MODE_BY_GROUPS = {frozenset(groups): mode for mode, groups in _PULSE_GROUPS.items()}
+
 class PulseFCC(FCC):
     @classmethod
     def _calculate_coefficients(
+        cls,
         model: Model,
         n_samples: int,
         seed: int,
         scale: bool = False,
-        sample_axis: str = "pulse",
+        sample_axis: List[str] = ("unitary", "pulse"),
+        gate_mode: Optional[str] = None,
         pulse_params_variance: float = 0.1,
         **kwargs,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """
         Calculates the Fourier coefficients of a given model
         using `n_samples` and `seed`.
-        Optionally, `noise_params` can be passed to perform noisy simulation.
 
         Args:
             model (Model): The QFM model
@@ -58,21 +69,67 @@ class PulseFCC(FCC):
             seed (int): Seed to initialize random parameters
             scale (bool, optional): Whether to scale the number of samples.
                 Defaults to False.
-            sample_axis (str, optional): Allows specifying "unitary", "pulse" or
-                both. If both are specified, only unitary params actually receive
-                the total number of samples and pulse parameter will get "distorted".
-                If "pulse" is specified, a pulse simulation will be performed, else
-                a unitary simulation will be performed.
-            pulse_params_variance (float, optional): Variance of pulse parameters.
-                If this is set to 0.0, the pulse parameters will not be distorted.
-                I.e. a pulse simulation with default pulse parameters will run.
-
-
+            sample_axis (List[str], optional): Which quantities are randomised
+                across the samples, a subset of "unitary" (the variational
+                parameters $\\theta$), "pulse" (the ansatz pulse scalers
+                $\\lambda$) and "enc_pulse" (the encoding pulse scalers
+                $\\eta$). Entries are matched exactly, so "pulse" does not
+                select "enc_pulse". All selected quantities are drawn jointly,
+                i.e. sample $j$ is one draw of every selected quantity rather
+                than an outer product over them. The four pulse regimes are
+                selected by which pulse groups appear here: none gives
+                "unitary", "pulse" gives "ansatz_pulse", "enc_pulse" gives
+                "enc_pulse" and both give "all_pulse".
+            gate_mode (Optional[str], optional): Gate execution backend used
+                for the coefficient calculation, one of "unitary",
+                "ansatz_pulse", "enc_pulse" or "all_pulse". Defaults to None,
+                in which case it is derived from `sample_axis` as the mode
+                that runs exactly the sampled pulse groups. Pass it explicitly
+                only to run a group at pulse level without perturbing it,
+                which differs from the unitary result only once the pulses are
+                detuned or noise is enabled. A pulse entry in `sample_axis`
+                that the mode does not run at pulse level is ignored with a
+                warning.
+            pulse_params_variance (float, optional): Variance of the pulse
+                scalers. If this is set to 0.0, the pulse parameters are not
+                distorted, i.e. the simulation runs with default pulse
+                parameters.
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
-            Tuple[jnp.ndarray, jnp.ndarray]: Parameters and Coefficients of size NxK
+            Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Parameters,
+            coefficients of size NxK and the corresponding frequencies.
         """
+        if gate_mode is None:
+            # the sampled pulse groups fully determine the regime, so there is
+            # no combination left that the mode could fail to honour
+            gate_mode = _MODE_BY_GROUPS[
+                frozenset(g for g in _GROUP_BATCH_AXIS if g in sample_axis)
+            ]
+            log.info(f"Derived gate_mode={gate_mode} from sample_axis={sample_axis}")
+        elif gate_mode not in _PULSE_GROUPS:
+            raise ValueError(
+                f"Unknown gate_mode: {gate_mode}. Use one of {list(_PULSE_GROUPS)}."
+            )
+
+        # only the groups this mode runs at pulse level can be sampled, the
+        # model rejects a scaler group it does not run and such a group would
+        # be inert on the coefficients anyway
+        groups = _PULSE_GROUPS[gate_mode]
+        sampled_groups = [group for group in groups if group in sample_axis]
+        ignored = [
+            group
+            for group in _GROUP_BATCH_AXIS
+            if group in sample_axis and group not in groups
+        ]
+        if ignored:
+            log.warning(
+                f"sample_axis entries {ignored} have no effect under "
+                f"gate_mode={gate_mode}, which runs {list(groups)} at pulse level"
+            )
+
+        scalers = {group: None for group in groups}
+
         if n_samples > 0:
             if scale:
                 total_samples = int(
@@ -81,6 +138,10 @@ class PulseFCC(FCC):
             else:
                 total_samples = n_samples
 
+            if pulse_params_variance == 0.0 and sampled_groups:
+                log.info("Zero pulse variance, using default pulse parameters")
+                sampled_groups = []
+
             random_key = jax.random.PRNGKey(seed)
             # initialize model with new parameters and use batching if
             # "unitary" is specified in sampling axis
@@ -88,76 +149,66 @@ class PulseFCC(FCC):
                 random_key = model.initialize_params(
                     random_key=random_key, repeat=total_samples
                 )
-                log.info(f"Sampling unitary parameters")
+                # the parameter axis B_P already carries the samples
+                sample_axis_owned = True
+                log.info("Sampling unitary parameters")
             else:
                 random_key = model.initialize_params(random_key=random_key)
-                log.info(f"Re-initializing unitary parameters")
+                sample_axis_owned = False
+                log.info("Re-initializing unitary parameters")
 
-            scaler = None
+            # number of input samples the Fourier transform evaluates, i.e. B_I
+            mfs, mts = kwargs.get("mfs", 1), kwargs.get("mts", 1)
+            n_inputs = int(jnp.prod(jnp.array([mts * mfs * d for d in model.degree])))
 
-            # specifying "pulse" in sampling axis...
-            if "pulse" in sample_axis:
-                # either only distort pulse parameters...
-                if "unitary" in sample_axis:
-                    if pulse_params_variance == 0.0:
-                        log.info(f"Using default pulse parameters")
-                    else:
-                        # sample differently for params
-                        scaler = 1.0 + pulse_params_variance * jax.random.normal(
-                            random_key,
-                            shape=(
-                                total_samples,
-                                *model.pulse_params.shape[
-                                    1:
-                                ],  # starting from batch dimension
-                            ),
-                        )
-                        degree = jnp.prod(jnp.array(model.degree))
-                        # but repeat over the input dimension
-                        # Note, that the following steps are identical to what happens in
-                        # _assimilate_batch
-                        # [B_I, 1, B_R, ...]
-                        scaler = scaler.repeat(degree, axis=0)
-                        # [..., B]
-                        scaler = scaler.reshape(
-                            degree * total_samples,
-                            *model.pulse_params.shape[1:],
-                        )
-                        # disable repeat for pulse parameters (to not further extend batch axis)
-                        model.repeat_batch_axis = [True, True, False]
-                        log.info(f"Sampling (pulse+std) parameters")
-                # or actually samples them if we didn't do that before
+            repeat_batch_axis = [True, True, True, True]
+
+            for group in sampled_groups:
+                random_key, sub_key = jax.random.split(random_key)
+                payload_shape = getattr(model, f"{group}_params").shape[1:]
+                scaler = 1.0 + pulse_params_variance * jax.random.normal(
+                    sub_key,
+                    shape=(total_samples, *payload_shape),
+                )
+
+                if sample_axis_owned:
+                    # Another quantity already spans the samples, so this group
+                    # cannot own a batch axis of its own without turning the
+                    # draws into an outer product. Instead lay it out along the
+                    # flattened batch, whose element k holds sample
+                    # k % total_samples, and mask its axis so _assimilate_batch
+                    # leaves it as is. This is the same tiling _assimilate_batch
+                    # applies to the axis that does not own the batch.
+                    scaler = jnp.tile(scaler, (n_inputs, *([1] * len(payload_shape))))
+                    repeat_batch_axis[_GROUP_BATCH_AXIS[group]] = False
                 else:
-                    scaler = 1.0 + pulse_params_variance * jax.random.normal(
-                        random_key,
-                        shape=(
-                            total_samples,
-                            *model.pulse_params.shape[1:],
-                        ),
-                    )
-                    log.info(f"Sampling pulse parameters")
-            else:
-                if pulse_params_variance == 0.0:
-                    log.info(f"Using default pulse parameters")
-                else:
-                    scaler = 1.0 + pulse_params_variance * jax.random.normal(
-                        random_key,
-                        shape=model.pulse_params.shape,
-                    )
-                    log.info(f"Distorting pulse parameters")
+                    # nothing sampled yet, so this group owns the sample axis
+                    # and _assimilate_batch expands it against the inputs
+                    sample_axis_owned = True
+
+                scalers[group] = scaler
+                log.info(f"Sampling {group} parameters")
+
+            model.repeat_batch_axis = repeat_batch_axis
+
+            if not sample_axis_owned:
+                log.warning(
+                    "Neither unitary nor pulse parameters are sampled, the "
+                    "coefficients will be identical across all samples"
+                )
 
             log.info(f"Using {total_samples} samples for FCC calculation")
 
         else:
             total_samples = 1
 
-        # always a pulse simulation for coefficient calculation (consistency)
         coeffs, freqs = Coefficients.get_spectrum(
             model,
             shift=True,
             trim=True,
-            gate_mode="ansatz_pulse" if "pulse" in sample_axis else "unitary",
-            pulse_params=scaler if "pulse" in sample_axis else None,
+            gate_mode=gate_mode,
+            pulse_params=scalers.get("pulse"),
+            enc_pulse_params=scalers.get("enc_pulse"),
             **kwargs,
         )
 
