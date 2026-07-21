@@ -7,6 +7,26 @@ data:
   coefficients_min: 0.0
   batch_size: -1
   zero_centered: True
+  # domain oversampling, mirroring spectrum.mts / spectrum.mfs so that the
+  # dataset lands on the bins calculate_spectrum analyses. mts is what makes an
+  # off-grid target unfittable at all: at mts=1 there are exactly as many
+  # samples as the model has degrees of freedom, so any target can be
+  # interpolated. keep mts >= offgrid_resolution to cover a full period.
+  mts: 4
+  mfs: 1
+  # target frequencies that do not align with the model's own comb.
+  # "none" keeps the model comb, "index" displaces each component
+  # independently (arbitrary, generally not reachable), "generator" displaces
+  # the per-gate generators (reachable by an encoding pulse configuration)
+  offgrid_mode: "index"
+  # likelihood that a single component (or generator) is displaced. this is the
+  # fraction of off-grid components only under "index": a sum of displaced
+  # generators can land back on an integer, so "generator" displaces fewer.
+  # the realized count is logged per run as data.n_offgrid
+  offgrid_prob: 0.5
+  # offsets are multiples of 1/resolution. keep it a power of two so the
+  # frequency values stay exact
+  offgrid_resolution: 2
 
 model:
   seed: 1000
@@ -39,7 +59,7 @@ train:
   loss_scalers: [1.0]
   # must be "unitary" when decompose_circuit is true
   # "unitary" | "ansatz_pulse" | "enc_pulse" | "all_pulse"
-  gate_mode: "ansatz_pulse"
+  gate_mode: "enc_pulse"
   rank_eval:
     enabled: True
     tol_rel: 1.0e-8

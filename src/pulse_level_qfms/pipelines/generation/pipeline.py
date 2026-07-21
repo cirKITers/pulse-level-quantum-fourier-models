@@ -51,6 +51,11 @@ def create_data_pipeline(**kwargs) -> Pipeline:
                     "params:data.coefficients_max",
                     "params:data.zero_centered",
                     "params:data.seed",
+                    "params:data.mts",
+                    "params:data.mfs",
+                    "params:data.offgrid_mode",
+                    "params:data.offgrid_prob",
+                    "params:data.offgrid_resolution",
                 ],
                 outputs={
                     "domain_samples": "domain_samples",
@@ -66,7 +71,6 @@ def create_data_pipeline(**kwargs) -> Pipeline:
                     "params:data.batch_size",
                     "domain_samples",
                     "fourier_samples",
-                    "coefficients",
                 ],
                 outputs={
                     "train_loader": "train_loader",
