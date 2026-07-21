@@ -452,39 +452,77 @@ def generate_fourier_series(
     coefficients_max: float,
     zero_centered: bool,
     seed: int,
-) -> jnp.ndarray:
+    mts: int,
+    mfs: int,
+    offgrid_mode: str,
+    offgrid_prob: float,
+    offgrid_resolution: int,
+) -> Dict[str, jnp.ndarray]:
     """
     Generates the Fourier series representation of a function.
 
+    Composes the `Datasets` building blocks rather than calling
+    `Datasets.generate_fourier_series`, so that the target frequencies are
+    available for logging and the domain can be oversampled independently of
+    the number of components.
+
     Parameters
     ----------
-    domain_samples : jnp.ndarray
-        Grid of domain samples.
-    omega : List[List[float]]
-        List of frequencies for each dimension.
+    model : Model
+        The quantum circuit model whose comb the series is built on.
+    coefficients_min, coefficients_max : float
+        Radius range the complex coefficients are drawn from.
+    zero_centered : bool
+        Whether to force the offset coefficient to zero.
+    seed : int
+        Seed for the coefficient and frequency draws.
+    mts, mfs : int
+        Domain oversampling, see `Datasets.construct_domain_samples`.
+    offgrid_mode, offgrid_prob, offgrid_resolution
+        Off-grid target control, see `Datasets.construct_frequencies`.
 
     Returns
     -------
-    jnp.ndarray
-        Fourier series representation of the function.
+    Dict[str, jnp.ndarray]
+        Domain samples, Fourier series samples and the coefficients.
     """
-    domain_samples, fourier_samples, coefficients = Datasets.generate_fourier_series(
-        random_key=jax.random.PRNGKey(seed),
-        model=model,
+    random_key, frequency_key = jax.random.split(jax.random.PRNGKey(seed))
+
+    domain_samples = Datasets.construct_domain_samples(model, mts=mts, mfs=mfs)
+    frequencies = Datasets.construct_frequencies(
+        model,
+        frequency_key,
+        offgrid_mode=offgrid_mode,
+        offgrid_prob=offgrid_prob,
+        offgrid_resolution=offgrid_resolution,
+    )
+    coefficients = Datasets.construct_coefficients(
+        random_key,
+        model,
         coefficients_min=coefficients_min,
         coefficients_max=coefficients_max,
         zero_centered=zero_centered,
     )
+    fourier_samples = Datasets.calculate_values(
+        domain_samples, frequencies, coefficients
+    )
+
+    log.info(f"Target frequencies: {frequencies.flatten().tolist()}")
+    mlflow.log_param("data.target_frequencies", frequencies.flatten().tolist())
+    mlflow.log_param(
+        "data.n_offgrid",
+        int(jnp.sum(frequencies != jnp.round(frequencies))),
+    )
 
     return {
         "domain_samples": domain_samples,
-        "fourier_samples": fourier_samples.flatten(),
+        "fourier_samples": fourier_samples,
         "coefficients": coefficients,
     }
 
 
 def build_fourier_series_dataloader(
-    batch_size: int, domain_samples, fourier_samples, coefficients: jnp.ndarray
+    batch_size: int, domain_samples, fourier_samples: jnp.ndarray
 ):
     if batch_size < 1:
         batch_size = domain_samples.shape[0]
@@ -492,7 +530,6 @@ def build_fourier_series_dataloader(
         TensorDataset(
             torch.from_numpy(np.array(domain_samples)),
             torch.from_numpy(np.array(fourier_samples).squeeze()),
-            torch.from_numpy(np.array(coefficients).squeeze()),
         ),
         batch_size=batch_size,
         shuffle=False,
