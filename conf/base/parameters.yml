@@ -39,7 +39,6 @@ train:
   loss_scalers: [1.0]
   # must be "unitary" when decompose_circuit is true
   # "unitary" | "ansatz_pulse" | "enc_pulse" | "all_pulse"
-  # ansatz_pulse and all_pulse must not be used when decompose_circuit is true
   gate_mode: "all_pulse"
   rank_eval:
     enabled: True
