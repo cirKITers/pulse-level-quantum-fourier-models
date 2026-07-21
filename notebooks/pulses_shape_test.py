@@ -36,7 +36,7 @@ model.repeat_batch_axis = [True, True, False]
 # some dumy inputs
 inputs = jnp.zeros((n_input_samples,))
 
-res = model(inputs=inputs, pulse_params=scaler, gate_mode="pulse")
+res = model(inputs=inputs, pulse_params=scaler, gate_mode="ansatz_pulse")
 
 # we want to end up with [B_I, B_P, n_qubits]
 # because all inputs are equal, the output should be the same for all inputs
