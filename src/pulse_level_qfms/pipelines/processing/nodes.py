@@ -27,9 +27,14 @@ log = logging.getLogger(__name__)
 
 _PULSE_GROUPS = {
     "unitary": (),
-    "pulse": ("pulse",),
+    "ansatz_pulse": ("pulse",),
+    "enc_pulse": ("enc_pulse",),
     "all_pulse": ("pulse", "enc_pulse"),
 }
+
+# position of each pulse scaler group in the differentiated coefficient
+# function, i.e. the ``argnums`` handle used to extend ``J_\theta``
+_GROUP_ARGNUM = {"pulse": 1, "enc_pulse": 2}
 
 class PulseFCC(FCC):
     def get_fourier_fingerprint(
@@ -209,7 +214,7 @@ class PulseFCC(FCC):
             model,
             shift=True,
             trim=True,
-            gate_mode="pulse" if "pulse" in sample_axis else "unitary",
+            gate_mode="ansatz_pulse" if "pulse" in sample_axis else "unitary",
             pulse_params=scaler if "pulse" in sample_axis else None,
             **kwargs,
         )
@@ -281,7 +286,7 @@ class PulseExpressibility(Expressibility):
         gate_mode = "unitary"
 
         if "pulse" in sample_axis:
-            gate_mode = "pulse"
+            gate_mode = "ansatz_pulse"
             if pulse_params_variance == 0.0:
                 log.info("Expressibility: using default pulse parameters")
             else:
@@ -629,7 +634,6 @@ def train_model(
         )
 
     # trainable pulse scaler groups, each starting at ones
-    # (i.e. no deviation from default)
     pulse_groups = {
         group: jnp.ones_like(getattr(model, f"{group}_params"))
         for group in _PULSE_GROUPS[gate_mode]
@@ -691,6 +695,7 @@ def train_model(
                 model,
                 theta=params["unitary"],
                 lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
+                eta=params.get("enc_pulse", jnp.ones_like(model.enc_pulse_params)),
                 gate_mode=gate_mode,
                 tol_rel=rank_eval_tol_rel,
                 step=step,
@@ -739,13 +744,14 @@ def train_model(
             model,
             theta=params["unitary"],
             lam=params.get("pulse", jnp.ones_like(model.pulse_params)),
+            eta=params.get("enc_pulse", jnp.ones_like(model.enc_pulse_params)),
             gate_mode=gate_mode,
             tol_rel=rank_eval_tol_rel,
             step=steps, # the last step
         )
 
     return {
-        "model": model,
+        # "model": model,
     }
 
 
@@ -783,7 +789,7 @@ def evaluate_fidelity(
 
     pulse_states = model(
         pulse_params=scaler,
-        gate_mode="pulse",
+        gate_mode="ansatz_pulse",
         execution_type="density",
     )
 
