@@ -474,7 +474,6 @@ def log_metrics(
 ):
     domain_samples = data.dataset.tensors[0].numpy()
     fourier_series = data.dataset.tensors[1].numpy()
-    target_coeffs = data.dataset.tensors[2].numpy()
 
     prediction = model(
         params=model.params,
@@ -486,27 +485,12 @@ def log_metrics(
         enc_pulse_params=enc_pulse_params,
         noise_params=noise_params,
     )
-    predicted_coeffs = Coefficients.get_spectrum(
-        model,
-        shift=True,
-        params=model.params,
-        execution_type="expval",
-        force_mean=True,
-        gate_mode=gate_mode,
-        pulse_params=pulse_params,
-        enc_pulse_params=enc_pulse_params,
-        noise_params=noise_params,
-    )[
-        0
-    ]  # get only coeffs, not freqs
 
+    # only the time-domain error is reported: once the target carries off-grid
+    # frequencies, its coefficients and the model's live on different supports
+    # and a coefficient-space comparison is not defined
     mlflow.log_metric(
         f"{prefix}_mse", Losses.mse(prediction, fourier_series).item(), step=step
-    )
-    mlflow.log_metric(
-        f"{prefix}_fmse",
-        Losses.fmse(predicted_coeffs, target_coeffs).item(),
-        step=step,
     )
 
 
@@ -751,7 +735,7 @@ def train_model(
                 step=step,
             )
 
-        for domain_samples, fourier_samples, coefficients in train_loader:
+        for domain_samples, fourier_samples in train_loader:
             domain_samples = jnp.array(domain_samples.numpy())
             fourier_samples = jnp.array(fourier_samples.numpy())
 

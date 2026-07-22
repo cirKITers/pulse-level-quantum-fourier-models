@@ -7,6 +7,18 @@ data:
   coefficients_min: 0.0
   batch_size: -1
   zero_centered: True
+  # domain oversampling, mirroring spectrum.mts / spectrum.mfs
+  mts: 4
+  mfs: 1
+  # target frequencies that do not align with the model's own comb.
+  # "none" keeps the model comb, "index" displaces each component
+  # independently (arbitrary, generally not reachable), "generator" displaces
+  # the per-gate generators (reachable by an encoding pulse configuration)
+  offgrid_mode: "generator"
+  # likelihood that a single component (or generator) is displaced
+  offgrid_prob: 1.0
+  # offsets are multiples of 1/resolution. keep it a power of two for exact frequencies
+  offgrid_resolution: 2
 
 model:
   seed: 1000
@@ -33,13 +45,13 @@ model:
 train:
   steps: 2000
   learning_rate: 1e-3
-  pulse_learning_rate: 1e-3 
+  pulse_learning_rate: 1e-3
   batch_size: -1
   loss_functions: ["mse"]
   loss_scalers: [1.0]
   # must be "unitary" when decompose_circuit is true
   # "unitary" | "ansatz_pulse" | "enc_pulse" | "all_pulse"
-  gate_mode: "ansatz_pulse"
+  gate_mode: "enc_pulse"
   rank_eval:
     enabled: True
     tol_rel: 1.0e-8
