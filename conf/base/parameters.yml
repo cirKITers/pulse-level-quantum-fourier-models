@@ -62,7 +62,7 @@ fcc:
 spectrum:
   seed: 1000
   n_samples: 500
-  # subset of "unitary" | "pulse" | "enc_pulse", matched exactly.d
+  # subset of "unitary" | "pulse" | "enc_pulse", matched exactly
   # "enc_pulse" selects the enc_pulse regime, i.e. the ansatz runs as a
   # unitary while only the encoding gates run at pulse level
   sample_axis: ["unitary", "enc_pulse"]
