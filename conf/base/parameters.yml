@@ -14,9 +14,9 @@ data:
   # "none" keeps the model comb, "index" displaces each component
   # independently (arbitrary, generally not reachable), "generator" displaces
   # the per-gate generators (reachable by an encoding pulse configuration)
-  offgrid_mode: "index"
+  offgrid_mode: "generator"
   # likelihood that a single component (or generator) is displaced
-  offgrid_prob: 0.5
+  offgrid_prob: 1.0
   # offsets are multiples of 1/resolution. keep it a power of two for exact frequencies
   offgrid_resolution: 2
 
@@ -45,7 +45,7 @@ model:
 train:
   steps: 2000
   learning_rate: 1e-3
-  pulse_learning_rate: 1e-3 
+  pulse_learning_rate: 1e-3
   batch_size: -1
   loss_functions: ["mse"]
   loss_scalers: [1.0]
