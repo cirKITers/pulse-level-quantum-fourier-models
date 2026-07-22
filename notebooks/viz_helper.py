@@ -180,7 +180,7 @@ def viz_study_4(df, show_error):
 def viz_study_5(df, max_distortion, show_error):
     figures = []
 
-    # figures.extend(spectrum_over_distortion(df, max_distortion, show_error))
+    figures.extend(spectrum_over_distortion(df, max_distortion, show_error))
     figures.append(offgrid_mass_over_distortion(df, max_distortion, show_error))
 
     return figures
