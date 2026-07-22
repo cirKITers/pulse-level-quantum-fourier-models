@@ -1000,7 +1000,8 @@ def pulse_param_mse_comparison(
     color_it = iter(design.prim_colors_lst)
     cases = [
         ("unitary", False, "Gate"),
-        ("ansatz_pulse", False, "+ Pulse"),
+        ("enc_pulse", False, "+ Pulse"),
+        # ("ansatz_pulse", False, "+ Pulse"),
         ("unitary", True, "Decomposed"),
     ]
     for gate_mode, decompose_circuit, label in cases:

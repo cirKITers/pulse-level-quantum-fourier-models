@@ -192,8 +192,7 @@ def generate_df(run_ids: List[str]):
 
         if "train.gate_mode" in run.data.params:
             gate_mode = run.data.params["train.gate_mode"]
-            # runs logged while the ansatz-pulse mode was still called "pulse"
-            row["gate_mode"] = "ansatz_pulse" if gate_mode == "pulse" else gate_mode
+            row["gate_mode"] = gate_mode
         elif "train.train_pulse" in run.data.params:
             # runs logged before gate_mode replaced the train_pulse flag
             row["gate_mode"] = (
