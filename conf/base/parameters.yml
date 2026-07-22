@@ -62,12 +62,12 @@ fcc:
 spectrum:
   seed: 1000
   n_samples: 500
-  # subset of "unitary" | "pulse" | "enc_pulse", matched exactly.
+  # subset of "unitary" | "pulse" | "enc_pulse", matched exactly.d
   # "enc_pulse" selects the enc_pulse regime, i.e. the ansatz runs as a
   # unitary while only the encoding gates run at pulse level
   sample_axis: ["unitary", "enc_pulse"]
   pulse_params_variance: 0.008
-  scale: False
+  scale: True
   # frequency oversampling. mts sets the bin spacing to 1/mts, which is what
   # makes a frequency shift resolvable at all. Keep it a power of two so the
   # frequency values, and with them the metric names, stay exact.
