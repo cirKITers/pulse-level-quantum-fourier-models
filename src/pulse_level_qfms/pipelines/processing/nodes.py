@@ -46,6 +46,15 @@ _GROUP_BATCH_AXIS = {"pulse": 2, "enc_pulse": 3}
 # result (the pulses are calibrated to the ideal gates).
 _MODE_BY_GROUPS = {frozenset(groups): mode for mode, groups in _PULSE_GROUPS.items()}
 
+# model attribute each trainable group writes back to. "enc" is the unitary
+# trainable-frequency knob enc_params, the others are pulse scalers.
+_GROUP_ATTR = {
+    "pulse": "pulse_params",
+    "enc_pulse": "enc_pulse_params",
+    "enc": "enc_params",
+}
+
+
 class PulseFCC(FCC):
     @classmethod
     def _calculate_coefficients(
@@ -471,11 +480,12 @@ def log_metrics(
     noise_params=None,
     pulse_params=None,
     enc_pulse_params=None,
+    enc_params=None,
 ):
     domain_samples = data.dataset.tensors[0].numpy()
     fourier_series = data.dataset.tensors[1].numpy()
 
-    prediction = model(
+    call_kwargs = dict(
         params=model.params,
         inputs=domain_samples,
         execution_type="expval",
@@ -485,6 +495,9 @@ def log_metrics(
         enc_pulse_params=enc_pulse_params,
         noise_params=noise_params,
     )
+    if enc_params is not None:
+        call_kwargs["enc_params"] = enc_params
+    prediction = model(**call_kwargs)
 
     # only the time-domain error is reported: once the target carries off-grid
     # frequencies, its coefficients and the model's live on different supports
@@ -661,6 +674,9 @@ def train_model(
     rank_eval_enabled: bool = False,
     rank_eval_tol_rel: float = 1e-8,
     rank_report_interval: int = 100,
+    target_etas: Optional[jnp.ndarray] = None,
+    enc_pulse_init: str = "ones",
+    train_enc_params: bool = False,
 ) -> None:
     if gate_mode not in _PULSE_GROUPS:
         raise ValueError(
@@ -673,8 +689,24 @@ def train_model(
         for group in _PULSE_GROUPS[gate_mode]
     }
 
-    # create params dict
-    params = {"unitary": model.params, **pulse_groups}
+    # oracle-initialize the encoding amplitude scalers at the target etas
+    if enc_pulse_init == "target" and "enc_pulse" in pulse_groups:
+        if target_etas is None:
+            raise ValueError(
+                "enc_pulse_init='target' requires target_etas, which are only "
+                "produced by offgrid_mode='generator'."
+            )
+        eta0 = pulse_groups["enc_pulse"]
+        te = jnp.asarray(target_etas)  # (n_input_feat, n_layers, n_qubits)
+        for idx, off in enumerate(model._enc_pulse_offsets):
+            eta0 = eta0.at[0, :, :, off].set(te[idx])
+        pulse_groups["enc_pulse"] = eta0
+
+    extra_groups = dict(pulse_groups)
+    if train_enc_params:
+        extra_groups["enc"] = jnp.ones_like(model.enc_params)
+
+    params = {"unitary": model.params, **extra_groups}
 
     # set a per-group optimizer
     pulse_lr = (
@@ -682,13 +714,15 @@ def train_model(
     )
     log.info(
         f"Learning rates - unitary: {learning_rate}, "
-        f"pulse: {pulse_lr if pulse_groups else 'N/A (not training pulse params)'}"
+        f"pulse: {pulse_lr if extra_groups else 'N/A (not training pulse params)'}"
     )
 
-    if pulse_groups:
-        # Separate optimizer chains: aggressive clipping + smaller lr for pulse
+    if extra_groups:
+        # separate Adam per parameter group so the pulse / enc scalers can use
+        # their own learning rate (pulse_learning_rate; defaults to
+        # learning_rate*0.1 when unset, though the study config sets it equal)
         transforms = {"unitary": optax.adam(learning_rate)}
-        transforms.update({k: optax.adam(pulse_lr) for k in pulse_groups})
+        transforms.update({k: optax.adam(pulse_lr) for k in extra_groups})
 
         # Combine into a single optimizer keyed by the param labels
         label_fn = lambda params: {k: k for k in params}  # noqa: E731
@@ -711,12 +745,15 @@ def train_model(
     def cost(params_dict, targets, **kwargs):
         # a group is absent (-> None) exactly when it is not trained; passing
         # None keeps the model on its own params and is valid in every mode
-        predictions = model(
+        call_kwargs = dict(
             params=params_dict["unitary"],
             pulse_params=params_dict.get("pulse"),
             enc_pulse_params=params_dict.get("enc_pulse"),
-            **kwargs,
         )
+        # enc_params only when trained, to avoid the "enc_params is None" warning
+        if "enc" in params_dict:
+            call_kwargs["enc_params"] = params_dict["enc"]
+        predictions = model(**call_kwargs, **kwargs)
 
         total_loss = jnp.array(0.0)
         for ls, lf in zip(loss_scalers, loss_functions):
@@ -752,8 +789,8 @@ def train_model(
             params = optax.apply_updates(params, updates)
 
         model.params = params["unitary"]
-        for group in pulse_groups:
-            setattr(model, f"{group}_params", params[group])
+        for group in extra_groups:
+            setattr(model, _GROUP_ATTR[group], params[group])
             mlflow.log_metric(
                 f"{group}_scaler_mean", float(jnp.mean(params[group])), step=step
             )
@@ -770,6 +807,7 @@ def train_model(
             noise_params=noise_params,
             pulse_params=params.get("pulse"),
             enc_pulse_params=params.get("enc_pulse"),
+            enc_params=params.get("enc"),
         )
         
     # final reporting

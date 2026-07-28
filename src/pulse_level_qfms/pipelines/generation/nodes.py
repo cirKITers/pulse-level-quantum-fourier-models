@@ -514,10 +514,25 @@ def generate_fourier_series(
         int(jnp.sum(frequencies != jnp.round(frequencies))),
     )
 
+    # In generator mode the target comb is reachable by a known encoding pulse
+    # configuration: the amplitude scalers eta = 1 + offset per (layer, qubit),
+    # one array per input feature. Recovered with the same frequency_key so it
+    # matches the target, used downstream to oracle-init or score trained
+    # scalers. None for every other off-grid mode.
+    target_etas = None
+    if offgrid_mode == "generator":
+        target_etas = jnp.stack(
+            Datasets.generator_etas(
+                model, frequency_key, offgrid_prob, offgrid_resolution
+            )
+        )
+        mlflow.log_param("data.target_etas", np.asarray(target_etas).tolist())
+
     return {
         "domain_samples": domain_samples,
         "fourier_samples": fourier_samples,
         "coefficients": coefficients,
+        "target_etas": target_etas,
     }
 
 

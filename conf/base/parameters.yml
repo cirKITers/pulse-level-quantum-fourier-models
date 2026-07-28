@@ -52,6 +52,11 @@ train:
   # must be "unitary" when decompose_circuit is true
   # "unitary" | "ansatz_pulse" | "enc_pulse" | "all_pulse"
   gate_mode: "enc_pulse"
+  # "ones" starts the encoding scalers at identity; "target" oracle-initializes
+  # the amplitude scalers at the etas that make the off-grid comb reachable
+  # (offgrid_mode="generator" only), to separate reachability from optimization
+  enc_pulse_init: "ones"
+  train_enc_params: False
   rank_eval:
     enabled: True
     tol_rel: 1.0e-8
@@ -83,6 +88,8 @@ spectrum:
   # frequency oversampling. mts sets the bin spacing to 1/mts, which is what
   # makes a frequency shift resolvable at all. Keep it a power of two so the
   # frequency values, and with them the metric names, stay exact.
+  # mfs must be at least the largest amplitude scaler when analyzing trained
+  # enc_pulse models (mfs=1 is valid here because the variance keeps eta near 1)
   mfs: 1
   mts: 4
 

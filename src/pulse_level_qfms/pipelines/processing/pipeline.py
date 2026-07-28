@@ -127,6 +127,9 @@ def create_training_pipeline(**kwargs) -> Pipeline:
                     "rank_eval_enabled": "params:train.rank_eval.enabled",
                     "rank_eval_tol_rel": "params:train.rank_eval.tol_rel",
                     "rank_report_interval": "params:train.rank_eval.report_interval",
+                    "target_etas": "target_etas",
+                    "enc_pulse_init": "params:train.enc_pulse_init",
+                    "train_enc_params": "params:train.train_enc_params",
                 },
                 outputs={
                     # "model": "trained_model",

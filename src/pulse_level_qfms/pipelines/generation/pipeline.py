@@ -61,6 +61,7 @@ def create_data_pipeline(**kwargs) -> Pipeline:
                     "domain_samples": "domain_samples",
                     "fourier_samples": "fourier_samples",
                     "coefficients": "coefficients",
+                    "target_etas": "target_etas",
                 },
             ),
             Node(
