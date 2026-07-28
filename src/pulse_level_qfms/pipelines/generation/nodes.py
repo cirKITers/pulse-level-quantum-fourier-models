@@ -514,11 +514,6 @@ def generate_fourier_series(
         int(jnp.sum(frequencies != jnp.round(frequencies))),
     )
 
-    # In generator mode the target comb is reachable by a known encoding pulse
-    # configuration: the amplitude scalers eta = 1 + offset per (layer, qubit),
-    # one array per input feature. Recovered with the same frequency_key so it
-    # matches the target, used downstream to oracle-init or score trained
-    # scalers. None for every other off-grid mode.
     target_etas = None
     if offgrid_mode == "generator":
         target_etas = jnp.stack(
