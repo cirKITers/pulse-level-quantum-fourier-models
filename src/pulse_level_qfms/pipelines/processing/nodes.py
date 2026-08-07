@@ -1,11 +1,14 @@
 from typing import List, Dict, Tuple, Optional
 from rich.progress import track
+import time
 import jax
 import optax
 
 import mlflow
+from mlflow.entities import Metric
 from torch.utils.data import DataLoader
 
+import numpy as np
 import jax.numpy as jnp
 
 from qml_essentials.model import Model
@@ -469,6 +472,415 @@ def calculate_spectrum(
     )
 
     return {}
+
+
+def _balanced_ternary(frequencies: np.ndarray, n_qubits: int) -> np.ndarray:
+    """
+    Decompose each comb frequency into the encoding signs that generate it.
+
+    The comb of a ternary encoding is the Minkowski sum
+    $\\omega(s) = \\sum_q s_q 3^q$ over $s \\in \\{-1, 0, 1\\}^{n}$, which is a
+    bijection onto the integers $[-(3^n - 1)/2, (3^n - 1)/2]$. Inverting it
+    assigns every Fourier coefficient to exactly one sign vector, which is what
+    makes the frequency sweep expressible in closed form: an encoding scaler
+    $\\eta_q$ moves the component $\\omega(s)$ to $\\sum_q s_q 3^q \\eta_q$
+    while leaving the coefficient untouched.
+
+    Args:
+        frequencies (np.ndarray): The model comb, one integer per component.
+        n_qubits (int): Number of qubits, i.e. the number of digits.
+
+    Returns:
+        np.ndarray: Signs $s$ of shape (n_frequencies, n_qubits).
+
+    Raises:
+        ValueError: If the comb is not the ternary one, i.e. if the map is not
+            a bijection and a coefficient cannot be attributed to a single
+            sign vector.
+    """
+    if len(frequencies) != 3**n_qubits:
+        raise ValueError(
+            f"Expected {3**n_qubits} comb components for a ternary encoding on "
+            f"{n_qubits} qubits, got {len(frequencies)}. The landscape sweep "
+            "needs a redundancy-free comb, i.e. encoding_strategy='ternary' "
+            "with n_layers=1."
+        )
+
+    signs = np.zeros((len(frequencies), n_qubits), dtype=int)
+    for i, frequency in enumerate(frequencies):
+        remainder = int(round(float(frequency)))
+        for q in range(n_qubits):
+            digit = ((remainder + 1) % 3) - 1
+            signs[i, q] = digit
+            remainder = (remainder - digit) // 3
+        if remainder != 0:
+            raise ValueError(
+                f"Frequency {frequency} is outside the ternary comb of "
+                f"{n_qubits} qubits."
+            )
+
+    return signs
+
+
+def _sweep_grid(
+    eta_min: float, eta_max: float, points_per_period: int, mts: int, generator: float
+) -> np.ndarray:
+    """
+    Sample the scaler axis fine enough to resolve the loss oscillations.
+
+    Two frequencies separated by $\\Delta$ correlate over the sample window as
+    a Dirichlet kernel whose sidelobes sit $1/mts$ apart. A scaler on a
+    generator of size $g$ detunes its components at rate $g$, so the loss
+    oscillates with period $1/(mts \\, g)$ along $\\eta$.
+
+    Args:
+        eta_min, eta_max (float): Bounds of the scaler axis.
+        points_per_period (int): Samples per loss oscillation.
+        mts (int): Domain oversampling of the dataset, which sets the
+            Dirichlet sidelobe spacing.
+        generator (float): Generator frequency the scaler acts on.
+
+    Returns:
+        np.ndarray: The scaler grid.
+    """
+    step = 1.0 / (points_per_period * mts * generator)
+    return np.arange(eta_min, eta_max + 0.5 * step, step)
+
+
+def _profile_mse(x: np.ndarray, y: np.ndarray, omegas: np.ndarray) -> float:
+    """
+    Loss of the best real Fourier fit on the comb `omegas`, i.e. the loss with
+    the coefficients concentrated out.
+
+    This is the separable (variable projection) view of the problem: the
+    coefficients enter linearly and are solved for in closed form, leaving a
+    cost that depends on the frequencies alone. In classical spectral
+    estimation this concentrated cost is what carries the sidelobe minima, and
+    it is the quantity an optimizer would see if its linear parameters always
+    caught up with the current frequencies.
+
+    Being a relaxation, it is a lower bound on what the model can reach: it
+    lets every component carry a free coefficient, which the variational
+    parameters do not. It also steps up at the isolated scalers where two
+    components coincide exactly, because the fit loses a direction there.
+
+    Args:
+        x (np.ndarray): Domain samples of shape (n_points,).
+        y (np.ndarray): Target values of shape (n_points,).
+        omegas (np.ndarray): Comb frequencies, duplicates and signs allowed.
+
+    Returns:
+        float: Mean squared residual of the least-squares fit.
+    """
+    # duplicates are left in rather than merged, the least-squares solve drops
+    # the redundant directions itself
+    phases = np.abs(omegas)[None, :] * x[:, None]
+    design = np.concatenate([np.cos(phases), np.sin(phases)], axis=1)
+
+    residual = y - design @ np.linalg.lstsq(design, y, rcond=None)[0]
+    return float(np.mean(residual**2))
+
+
+def _pulse_sweep(
+    model: Model,
+    x: jnp.ndarray,
+    y: np.ndarray,
+    qubit: int,
+    slot: int,
+    grid: np.ndarray,
+    frozen: np.ndarray,
+    chunk: int,
+) -> np.ndarray:
+    """
+    Evaluate the loss over the scaler grid with the encoding gates at pulse
+    level.
+
+    The grid is pushed through the encoding pulse batch axis rather than a
+    Python loop, so one call covers `chunk` scalers at once. Blocks are padded
+    to a constant size to keep a single compiled shape.
+
+    Args:
+        model (Model): The QFM model.
+        x (jnp.ndarray): Domain samples of shape (n_points, n_input_feat).
+        y (np.ndarray): Target values of shape (n_points,).
+        qubit (int): Qubit whose encoding scaler is swept.
+        slot (int): Pulse parameter slot holding the amplitude.
+        grid (np.ndarray): Scaler values to evaluate.
+        frozen (np.ndarray): Amplitude scalers of the remaining gates, shape
+            (n_layers, n_qubits).
+        chunk (int): Number of scalers per model call.
+
+    Returns:
+        np.ndarray: Mean squared error per grid point.
+    """
+    losses = np.empty(len(grid))
+    # the model keeps whatever it is called with, so the batched scalers would
+    # otherwise stay behind and break the next unbatched call
+    saved = (model.enc_pulse_params, list(model.repeat_batch_axis))
+    try:
+        for start in track(
+            range(0, len(grid), chunk), description=f"Sweeping qubit {qubit}.."
+        ):
+            block = grid[start : start + chunk]
+            padded = np.full(chunk, block[-1])
+            padded[: len(block)] = block
+
+            enc_pulse_params = np.ones((chunk, *model._enc_pulse_shape))
+            enc_pulse_params[..., slot] = frozen
+            enc_pulse_params[:, :, qubit, slot] = padded[:, None]
+
+            prediction = np.asarray(
+                model(
+                    params=model.params,
+                    inputs=x,
+                    execution_type="expval",
+                    force_mean=True,
+                    gate_mode="enc_pulse",
+                    enc_pulse_params=jnp.array(enc_pulse_params),
+                )
+            ).reshape(len(y), chunk)
+
+            losses[start : start + len(block)] = ((prediction - y[:, None]) ** 2).mean(
+                axis=0
+            )[: len(block)]
+    finally:
+        model.enc_pulse_params, model.repeat_batch_axis = saved
+
+    return losses
+
+
+def _log_curves(curves: Dict[str, np.ndarray]) -> None:
+    """
+    Log the sweep curves as per-step metric histories, batched.
+
+    Args:
+        curves (Dict[str, np.ndarray]): Metric name to values, indexed by the
+            position on the scaler grid.
+    """
+    timestamp = int(time.time() * 1000)
+    metrics = [
+        Metric(key=key, value=float(value), timestamp=timestamp, step=step)
+        for key, values in curves.items()
+        for step, value in enumerate(values)
+    ]
+
+    client = mlflow.tracking.MlflowClient()
+    run_id = mlflow.active_run().info.run_id
+    for start in range(0, len(metrics), 1000):
+        client.log_batch(run_id, metrics=metrics[start : start + 1000])
+
+
+def sweep_loss_landscape(
+    model: Model,
+    train_loader: DataLoader,
+    target_etas: Optional[jnp.ndarray],
+    mts: int,
+    eta_min: float,
+    eta_max: float,
+    points_per_period: int,
+    chunk: int,
+) -> Dict:
+    """
+    Sweeps the encoding scaler of each qubit and logs the resulting loss
+    landscape, one curve per encoding generator.
+
+    Training the encoding scalers is a frequency estimation problem: the
+    scaler $\\eta_q$ multiplies the generator $3^q$ of its qubit, so the loss
+    along $\\eta_q$ is the misfit between a detuned comb and the target. That
+    misfit oscillates with period $1/(mts \\cdot 3^q)$, which puts a local
+    minimum on every sidelobe and shrinks the basin around the aligned scaler
+    in proportion to the generator. Sweeping one qubit at a time therefore
+    resolves the landscape per frequency scale, which is what the per-qubit
+    curves report.
+
+    Three curves are logged per qubit:
+
+    - `fixed`, the loss at the current variational parameters. This is the
+      slice the optimizer sees before its coefficients adapt, evaluated in
+      closed form from the comb coefficients, which are independent of the
+      scalers.
+    - `profile`, the loss with the coefficients concentrated out, see
+      :func:`_profile_mse`. This is the landscape of the frequencies alone and
+      reaches zero wherever the comb covers the target support.
+    - `pulse`, the `fixed` curve evaluated through the pulse backend, which
+      confirms that the pulse amplitude scaler moves the comb the same way the
+      analytic scaler does.
+
+    The remaining qubits are held at their target scalers, so each slice
+    contains the aligned configuration and the path from the initial scaler
+    $\\eta = 1$ to it.
+
+    Args:
+        model (Model): The QFM model, which must use a ternary encoding with a
+            single layer so that every coefficient belongs to one comb sign
+            vector.
+        train_loader (DataLoader): Loader holding the domain samples and the
+            target series.
+        target_etas (Optional[jnp.ndarray]): The scalers that align the comb
+            with the target, produced by `offgrid_mode="generator"`.
+        mts (int): Domain oversampling of the dataset, which sets the
+            oscillation period along the scaler axis.
+        eta_min, eta_max (float): Bounds of the scaler axis.
+        points_per_period (int): Samples per loss oscillation.
+        chunk (int): Number of scalers per pulse-backend model call.
+    """
+    if target_etas is None:
+        raise ValueError(
+            "The landscape sweep needs target_etas, which are only produced by "
+            "offgrid_mode='generator'."
+        )
+    if model.n_input_feat != 1:
+        raise ValueError(
+            f"The landscape sweep supports a single input feature, got "
+            f"{model.n_input_feat}."
+        )
+
+    x = train_loader.dataset.tensors[0].numpy()
+    y = train_loader.dataset.tensors[1].numpy()
+
+    # the coefficients of the comb do not depend on the encoding scalers: the
+    # scalers only move the comb, so one spectrum at eta=1 fixes the analytic
+    # loss for every scaler. mts=1 keeps this on the integer comb, where the
+    # ternary decomposition is defined.
+    coefficients, frequencies = Coefficients.get_spectrum(
+        model,
+        mts=1,
+        mfs=1,
+        shift=True,
+        trim=True,
+        numerical_cap=-1,
+        gate_mode="unitary",
+        force_mean=True,
+        execution_type="expval",
+    )
+    coefficients = np.asarray(coefficients).ravel()
+    signs = _balanced_ternary(np.asarray(frequencies).ravel(), model.n_qubits)
+
+    # amplitude is the leading pulse parameter of the encoding gate and the
+    # only one that scales the rotation angle, i.e. the generator
+    slot = int(model._enc_pulse_offsets[0])
+    frozen = np.asarray(target_etas)[0]
+    generators = 3.0 ** np.arange(model.n_qubits)
+    domain = np.asarray(x).ravel()
+    phase = domain[:, None, None] * (signs * generators)[None, :, :]
+
+    log.info(f"Target etas: {frozen.tolist()}, generators: {generators.tolist()}")
+    mlflow.log_param("landscape.mts", mts)
+    for q in range(model.n_qubits):
+        mlflow.log_param(f"landscape.generator.q{q}", float(generators[q]))
+        mlflow.log_param(f"landscape.target_eta.q{q}", float(frozen[0, q]))
+
+    _verify_landscape(model, x, y, coefficients, phase, frozen, slot)
+
+    for q in range(model.n_qubits):
+        grid = _sweep_grid(eta_min, eta_max, points_per_period, mts, generators[q])
+        log.info(f"Qubit {q}: {len(grid)} scalers on generator {generators[q]}")
+
+        etas = np.tile(frozen[0], (len(grid), 1))
+        etas[:, q] = grid
+        omegas = etas @ (signs * generators).T
+
+        predictions = np.real(
+            np.einsum("tkn,k->nt", np.exp(1j * (phase @ etas.T)), coefficients)
+        )
+        fixed = ((predictions - y[None, :]) ** 2).mean(axis=1)
+        profile = np.array([_profile_mse(domain, y, o) for o in omegas])
+        pulse = _pulse_sweep(model, x, y, q, slot, grid, frozen, chunk)
+
+        _log_curves(
+            {
+                f"landscape.eta.q{q}": grid,
+                f"landscape.fixed.q{q}": fixed,
+                f"landscape.profile.q{q}": profile,
+                f"landscape.pulse.q{q}": pulse,
+            }
+        )
+
+    return {}
+
+
+def _verify_landscape(
+    model: Model,
+    x: jnp.ndarray,
+    y: np.ndarray,
+    coefficients: np.ndarray,
+    phase: np.ndarray,
+    frozen: np.ndarray,
+    slot: int,
+) -> None:
+    """
+    Check the closed-form loss against the model it stands in for.
+
+    The analytic curve is only a shortcut for the unitary model, and the pulse
+    curve is only comparable to it while the calibrated pulses reproduce their
+    gates, so both are confirmed on a few scalers before the sweep runs.
+
+    Args:
+        model (Model): The QFM model.
+        x (jnp.ndarray): Domain samples.
+        y (np.ndarray): Target values.
+        coefficients (np.ndarray): Comb coefficients at $\\eta = 1$.
+        phase (np.ndarray): Per-component phase $x \\, s \\, 3^q$ of shape
+            (n_points, n_frequencies, n_qubits).
+        frozen (np.ndarray): Target scalers of shape (n_layers, n_qubits).
+        slot (int): Pulse parameter slot holding the amplitude.
+
+    Raises:
+        ValueError: If either check exceeds its tolerance.
+    """
+    probes = np.tile(frozen[0], (4, 1))
+    probes[:, 0] = [0.37, 0.8, 1.23, 1.61]
+
+    analytic_dev = 0.0
+    for eta in probes:
+        enc_params = jnp.array(eta.reshape(*frozen.shape, 1))
+        prediction = model(
+            params=model.params,
+            inputs=x,
+            execution_type="expval",
+            force_mean=True,
+            gate_mode="unitary",
+            enc_params=enc_params,
+        )
+        expected = np.real(np.exp(1j * (phase @ eta)) @ coefficients)
+        analytic_dev = max(
+            analytic_dev,
+            abs(Losses.mse(np.asarray(prediction), y) - Losses.mse(expected, y)),
+        )
+    model.enc_params = jnp.ones((*frozen.shape, 1))
+
+    saved = (model.enc_pulse_params, list(model.repeat_batch_axis))
+    try:
+        enc_pulse_params = np.ones((1, *model._enc_pulse_shape))
+        enc_pulse_params[..., slot] = frozen
+        pulse = model(
+            params=model.params,
+            inputs=x,
+            execution_type="expval",
+            force_mean=True,
+            gate_mode="enc_pulse",
+            enc_pulse_params=jnp.array(enc_pulse_params),
+        )
+    finally:
+        model.enc_pulse_params, model.repeat_batch_axis = saved
+    pulse_dev = float(
+        np.max(np.abs(np.asarray(pulse) - np.real(np.exp(1j * (phase @ frozen[0])) @ coefficients)))
+    )
+
+    log.info(f"Landscape checks: analytic={analytic_dev:.3e}, pulse={pulse_dev:.3e}")
+    mlflow.log_metric("landscape.check.analytic", analytic_dev)
+    mlflow.log_metric("landscape.check.pulse", pulse_dev)
+
+    if analytic_dev > 1e-8:
+        raise ValueError(
+            f"Closed-form loss deviates from the unitary model by "
+            f"{analytic_dev:.3e}, the comb decomposition is not valid here."
+        )
+    if pulse_dev > 1e-3:
+        raise ValueError(
+            f"Pulse backend deviates from the unitary model by {pulse_dev:.3e} "
+            "at the target scalers, the pulses no longer reproduce their gates."
+        )
 
 
 def log_metrics(

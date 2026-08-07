@@ -11,6 +11,7 @@ from viz_helper import (
     viz_study_3,
     viz_study_4,
     viz_study_5,
+    viz_study_6,
 )
 
 # enable caching?
@@ -38,6 +39,10 @@ scenarios = {
     "study-5": {
         "experiment_name": "study-5-0",
         "show_error": True,
+    },
+    "study-6": {
+        "experiment_name": "study-6-0",
+        "show_error": False,
     },
 }
 
@@ -101,6 +106,8 @@ for scenario, setting in scenarios.items():
             max_distortion=max_distortion,
             show_error=setting["show_error"],
         )
+    elif scenario == "study-6":
+        figures = viz_study_6(df)
 
     save_figures(
         figures=figures,

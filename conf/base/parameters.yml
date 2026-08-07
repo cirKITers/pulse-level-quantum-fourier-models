@@ -62,6 +62,17 @@ train:
     tol_rel: 1.0e-8
     report_interval: 50
 
+landscape:
+  # bounds of the encoding scaler axis. eta=1 is the initial (calibrated)
+  # configuration, the target scalers are within [1-1/r, 1+1/r]
+  eta_min: 0.0
+  eta_max: 2.0
+  # samples per loss oscillation. the oscillation period along eta is
+  # 1/(data.mts * generator), so the grid gets finer with the generator
+  points_per_period: 20
+  # encoding scalers per pulse-backend model call
+  chunk: 64
+
 fcc:
   seed: 1000
   n_samples: 500

@@ -26,6 +26,9 @@ from .pipelines.processing.pipeline import (
 from .pipelines.processing.pipeline import (
     create_training_pipeline as processing_training_pipeline,
 )
+from .pipelines.processing.pipeline import (
+    create_landscape_pipeline as processing_landscape_pipeline,
+)
 from .pipelines.visualization.pipeline import (
     create_training_pipeline as visualization_training_pipeline,
 )
@@ -53,5 +56,11 @@ def register_pipelines() -> dict[str, Pipeline]:
     )
 
     pipelines["study-5"] = generation_model_pipeline() + processing_spectrum_pipeline()
+
+    pipelines["study-6"] = (
+        generation_data_pipeline()
+        + generation_model_pipeline()
+        + processing_landscape_pipeline()
+    )
 
     return pipelines

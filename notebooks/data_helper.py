@@ -221,10 +221,22 @@ def generate_df(run_ids: List[str]):
         if "trace-distance" in run.data.metrics:
             row["trace-distance"] = float(run.data.metrics["trace-distance"])
 
+        # the landscape sweep logs one series per qubit, so its metric names
+        # are only known per run
+        for param_name, value in run.data.params.items():
+            if param_name.startswith("landscape."):
+                row[param_name] = float(value)
+
+        landscape_metric_names = [
+            metric_name
+            for metric_name in run.data.metrics
+            if metric_name.startswith("landscape.") and ".q" in metric_name
+        ]
+
         # Fetch per-step metric histories and store as list-valued columns
         # "<metric>.steps" and "<metric>.values" so they live alongside the
         # summary metrics in the single DataFrame.
-        for metric_name in stepwise_metric_names:
+        for metric_name in stepwise_metric_names + landscape_metric_names:
             history = client.get_metric_history(run_id, metric_name)
             if not history:
                 # skip silently

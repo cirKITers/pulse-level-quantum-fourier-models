@@ -3,6 +3,7 @@ from kedro.pipeline import Node, Pipeline
 from pulse_level_qfms.pipelines.processing.nodes import (
     calculate_fcc,
     calculate_spectrum,
+    sweep_loss_landscape,
     train_model,
     evaluate_fidelity,
     evaluate_expressibility,
@@ -52,6 +53,29 @@ def create_spectrum_pipeline(**kwargs) -> Pipeline:
                     "params:spectrum.mfs",
                     "params:spectrum.mts",
                 ],
+                outputs={},
+            ),
+        ]
+    )
+
+
+def create_landscape_pipeline(**kwargs) -> Pipeline:
+    return Pipeline(
+        [
+            Node(
+                sweep_loss_landscape,
+                name="sweep_loss_landscape",
+                tags=["processing"],
+                inputs={
+                    "model": "model",
+                    "train_loader": "train_loader",
+                    "target_etas": "target_etas",
+                    "mts": "params:data.mts",
+                    "eta_min": "params:landscape.eta_min",
+                    "eta_max": "params:landscape.eta_max",
+                    "points_per_period": "params:landscape.points_per_period",
+                    "chunk": "params:landscape.chunk",
+                },
                 outputs={},
             ),
         ]

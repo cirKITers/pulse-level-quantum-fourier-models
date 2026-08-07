@@ -17,6 +17,7 @@ Each study can be run using `uv run kedro run --pipeline study-x`.
 - **Study-3**: Similarly to study-1 but we look at the expressibility instead.
 - **Study-4**:This study evaluates the different circuits by training on a Fourier series dataset. Here, the pulse parameters are either included in the optimization or not.
 - **Study-5**: This study perturbs the pulse parameters of the encoding gates only, while the ansatz runs as a unitary, and looks at where the resulting Fourier coefficients sit.
+- **Study-6**: This study sweeps the encoding pulse amplitude scaler of one qubit at a time and records the resulting loss landscape, one curve per encoding generator. It shows why those scalers are hard to train: the loss along a scaler oscillates with a period set by the generator it acts on, so the basin around the aligned scaler shrinks and the number of local minima on the way to it grows with the generator frequency. Requires a ternary encoding with a single layer and `data.offgrid_mode: "generator"`.
 
 You can associate an MlFlow experiment to a study by setting the name of the study in `./conf/local/mlflow.yml` under `tracking.experiment.name`.
 

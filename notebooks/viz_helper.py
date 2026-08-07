@@ -6,6 +6,8 @@ from typing import List
 import numpy as np
 import pandas as pd
 import string
+from plotly.subplots import make_subplots
+from scipy.signal import argrelmin, argrelmax
 
 
 def _natural_sort_key(s: str):
@@ -184,6 +186,275 @@ def viz_study_5(df, max_distortion, show_error):
     figures.append(offgrid_mass_over_distortion(df, max_distortion, show_error))
 
     return figures
+
+
+def viz_study_6(df):
+    figures = []
+
+    figures.append(landscape_over_eta(df, "profile"))
+    figures.append(landscape_over_eta(df, "fixed", show_pulse=True))
+    figures.append(landscape_scaling(df))
+
+    return figures
+
+
+def _landscape_row(df: pd.DataFrame) -> pd.Series:
+    """Return the first row of `df` that carries a landscape sweep.
+
+    Landscapes are not averaged over runs: every run draws its own target
+    scalers, so the curves of two runs are minima at different places.
+    """
+    column = "landscape.eta.q0.values"
+    if column not in df.columns:
+        raise ValueError("No landscape sweep in this DataFrame, run study-6 first.")
+
+    for _, row in df.iterrows():
+        if isinstance(row.get(column), (list, tuple, np.ndarray)):
+            return row
+
+    raise ValueError("No landscape sweep in this DataFrame, run study-6 first.")
+
+
+def _landscape_qubits(row: pd.Series) -> List[int]:
+    """Indices of the qubits swept in `row`, in order."""
+    return sorted(
+        int(c.split(".q")[1].split(".")[0])
+        for c in row.index
+        if c.startswith("landscape.eta.q") and c.endswith(".values")
+    )
+
+
+def landscape_over_eta(df: pd.DataFrame, curve: str, show_pulse: bool = False):
+    """
+    Plot the loss over the encoding scaler, one panel per encoding generator.
+
+    Each panel is a slice through the loss in which a single encoding scaler
+    is swept while the others sit at their target values, so the slice runs
+    from the initial scaler $\\eta = 1$ through the aligned one. The
+    oscillation along $\\eta$ has period $1/(mts \\cdot g)$ for a generator
+    $g$, so the panels of the higher generators pack proportionally more local
+    minima between the two. The panels share the scaler axis but not the loss
+    axis, which differs by orders of magnitude between them.
+
+    Args:
+        df (pd.DataFrame): DataFrame carrying the list-valued landscape
+            columns produced by ``generate_df``.
+        curve (str): Which loss to plot, "profile" for the loss with the
+            coefficients concentrated out or "fixed" for the loss at the
+            current variational parameters.
+        show_pulse (bool): Whether to overlay the same sweep evaluated through
+            the pulse backend, which is only defined for the "fixed" curve.
+
+    Returns:
+        go.Figure: A figure showing the loss over the encoding scaler.
+    """
+    row = _landscape_row(df)
+    qubits = _landscape_qubits(row)
+
+    fig = make_subplots(
+        rows=len(qubits),
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.04,
+    )
+    color_it = iter(design.prim_colors_lst)
+
+    for it, q in enumerate(qubits):
+        grid = np.array(row[f"landscape.eta.q{q}.values"])
+        values = np.array(row[f"landscape.{curve}.q{q}.values"])
+        generator = row[f"landscape.generator.q{q}"]
+        target = row[f"landscape.target_eta.q{q}"]
+        color = next(color_it)
+
+        fig.add_scatter(
+            x=grid,
+            y=values,
+            mode="lines",
+            name=f"$g = {generator:.0f}$",
+            line=dict(color=color, width=1.5),
+            row=it + 1,
+            col=1,
+        )
+
+        if show_pulse:
+            pulse = np.array(row[f"landscape.pulse.q{q}.values"])
+            fig.add_scatter(
+                x=grid[::10],
+                y=pulse[::10],
+                mode="markers",
+                showlegend=False,
+                marker=dict(color=color, size=5, symbol="circle-open"),
+                row=it + 1,
+                col=1,
+            )
+
+        fig.add_vline(
+            x=target,
+            line=dict(color=color, width=1.5, dash="dot"),
+            row=it + 1,
+            col=1,
+        )
+        fig.add_vline(
+            x=1.0,
+            line=dict(color=design.legend_color, width=1.5, dash="dash"),
+            row=it + 1,
+            col=1,
+        )
+        fig.update_yaxes(title_text="MSE", row=it + 1, col=1)
+
+    if show_pulse:
+        fig.add_scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            name="pulse",
+            marker=dict(color="gray", size=5, symbol="circle-open"),
+            row=1,
+            col=1,
+        )
+
+    fig.update_xaxes(title_text="$\\eta$", row=len(qubits), col=1)
+    fig.update_layout(
+        title=(
+            "Concentrated" if curve == "profile" else "Fixed-parameter"
+        )
+        + " Loss over Encoding Scaler",
+        template=design.template,
+        font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
+        margin=dict(b=120),
+        height=900,
+    )
+
+    return fig
+
+
+def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
+    """Basin width around the aligned scaler and local minima on the way to it.
+
+    The basin is the span between the two local maxima flanking the minimum at
+    `target`, i.e. the main lobe of the loss. The count is the number of local
+    minima strictly between the initial scaler $\\eta = 1$ and `target`, which
+    is how many times a descent from the initial scaler can stall.
+
+    Args:
+        grid (np.ndarray): The scaler grid.
+        values (np.ndarray): Loss over the grid.
+        target (float): The aligned scaler.
+
+    Returns:
+        tuple[float, int]: Basin width and local minima count.
+    """
+    center = int(np.argmin(np.abs(grid - target)))
+    maxima = argrelmax(values)[0]
+
+    left = maxima[maxima < center]
+    right = maxima[maxima > center]
+    width = grid[right[0]] - grid[left[-1]] if len(left) and len(right) else np.nan
+
+    inside = (grid >= min(1.0, target)) & (grid <= max(1.0, target))
+    count = len(argrelmin(values[inside])[0])
+
+    return float(width), count
+
+
+def landscape_scaling(df: pd.DataFrame):
+    """
+    Plot the basin width and the number of local minima against the encoding
+    generator they belong to.
+
+    Both follow from the Dirichlet kernel of the sample window: the loss
+    oscillates with period $1/(mts \\cdot g)$ along the scaler of a generator
+    $g$, so the main lobe spans $2/(mts \\cdot g)$ and a path of length
+    $|\\eta^* - 1|$ covers $mts \\cdot g \\, |\\eta^* - 1|$ oscillations. The
+    measured values are read off the concentrated loss. The basin reference is
+    exact, the minima reference is the number of oscillations on the path,
+    which bounds the strict local minima from above because the lobes next to
+    the main one merge into it.
+
+    Args:
+        df (pd.DataFrame): DataFrame carrying the list-valued landscape
+            columns produced by ``generate_df``.
+
+    Returns:
+        go.Figure: A figure showing both quantities over the generator.
+    """
+    row = _landscape_row(df)
+    mts = row["landscape.mts"]
+
+    generators, widths, counts, distances = [], [], [], []
+    for q in _landscape_qubits(row):
+        grid = np.array(row[f"landscape.eta.q{q}.values"])
+        values = np.array(row[f"landscape.profile.q{q}.values"])
+        target = row[f"landscape.target_eta.q{q}"]
+
+        width, count = _basin_and_minima(grid, values, target)
+        generators.append(row[f"landscape.generator.q{q}"])
+        widths.append(width)
+        counts.append(count)
+        distances.append(abs(target - 1.0))
+
+    generators = np.array(generators)
+
+    # the counts reach zero where the aligned scaler still sits inside the
+    # initial basin, so they get a linear axis of their own while the basin
+    # widths keep the log axis their power law needs
+    fig = go.Figure()
+    fig.add_scatter(
+        x=generators,
+        y=counts,
+        mode="markers",
+        name="local minima",
+        marker=dict(color=design.prim_colors_lst[0], size=design.marker_size),
+    )
+    fig.add_scatter(
+        x=generators,
+        y=mts * generators * np.array(distances),
+        mode="lines",
+        name="$mts \\cdot g \\cdot |\\eta^* - 1|$",
+        line=dict(color=design.prim_colors_lst[0], width=1.5, dash="dash"),
+    )
+    fig.add_scatter(
+        x=generators,
+        y=widths,
+        mode="markers",
+        name="basin width",
+        yaxis="y2",
+        marker=dict(color=design.prim_colors_lst[1], size=design.marker_size),
+    )
+    fig.add_scatter(
+        x=generators,
+        y=2.0 / (mts * generators),
+        mode="lines",
+        name="$2 / (mts \\cdot g)$",
+        yaxis="y2",
+        line=dict(color=design.prim_colors_lst[1], width=1.5, dash="dash"),
+    )
+
+    fig.update_layout(
+        title="Landscape Scaling over Encoding Generator",
+        xaxis=dict(
+            title="$g$", type="log", tickmode="array", tickvals=generators
+        ),
+        yaxis=dict(
+            title="local minima on the path",
+            rangemode="tozero",
+            color=design.prim_colors_lst[0],
+        ),
+        yaxis2=dict(
+            title="basin width",
+            type="log",
+            overlaying="y",
+            side="right",
+            color=design.prim_colors_lst[1],
+        ),
+        template=design.template,
+        font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
+        margin=dict(b=160),
+    )
+
+    return fig
 
 
 def _coeff_columns(df: pd.DataFrame, prefix: str = "coeff.mean.f"):
@@ -1058,8 +1329,7 @@ def pulse_mean_and_variance_over_step(
         tuple[go.Figure, go.Figure]: Two figures – one for pulse_scaler_mean
             and one for pulse_scaler_std over training steps.
     """
-    # Only consider runs that actually trained ansatz pulse parameters
-    filtered_df = df[df["gate_mode"].isin(["ansatz_pulse", "all_pulse"])]
+    filtered_df = df[df["gate_mode"].isin(["ansatz_pulse", "all_pulse", "enc_pulse"])]
 
     ansatzes = sort_ansatzes(filtered_df["ansatz"].unique())
 
@@ -1074,6 +1344,9 @@ def pulse_mean_and_variance_over_step(
         for ansatz in ansatzes[:10]:
             ansatz_df = filtered_df[filtered_df["ansatz"] == ansatz]
             hist_df = _collect_metric_history(ansatz_df, metric_name)
+            if hist_df.empty:
+                # enc_pulse runs log e.g. "enc_pulse_scaler_mean"
+                hist_df = _collect_metric_history(ansatz_df, f"enc_{metric_name}")
 
             if hist_df.empty:
                 continue
@@ -1155,7 +1428,7 @@ def loss_over_step(
         ansatz_colors[ansatz] = color
 
         for gate_mode, dash_style in [
-            ("ansatz_pulse", "solid"),
+            ("enc_pulse", "solid"),
             ("unitary", "dash"),
         ]:
             subset = df[(df["ansatz"] == ansatz) & (df["gate_mode"] == gate_mode)]
