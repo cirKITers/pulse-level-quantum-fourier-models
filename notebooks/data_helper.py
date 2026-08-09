@@ -221,11 +221,15 @@ def generate_df(run_ids: List[str]):
         if "trace-distance" in run.data.metrics:
             row["trace-distance"] = float(run.data.metrics["trace-distance"])
 
-        # the landscape sweep logs one series per qubit, so its metric names
+        # the landscape sweep logs one series per encoding gate, so its metric names
         # are only known per run
         for param_name, value in run.data.params.items():
             if param_name.startswith("landscape."):
                 row[param_name] = float(value)
+
+        for metric_name, value in run.data.metrics.items():
+            if metric_name.startswith("landscape.check."):
+                row[metric_name] = float(value)
 
         landscape_metric_names = [
             metric_name

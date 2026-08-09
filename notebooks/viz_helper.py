@@ -192,7 +192,7 @@ def viz_study_6(df):
     figures = []
 
     figures.append(landscape_over_eta(df, "profile"))
-    figures.append(landscape_over_eta(df, "fixed", show_pulse=True))
+    figures.append(landscape_over_eta(df, "fixed"))
     figures.append(landscape_scaling(df))
 
     return figures
@@ -204,37 +204,60 @@ def _landscape_row(df: pd.DataFrame) -> pd.Series:
     Landscapes are not averaged over runs: every run draws its own target
     scalers, so the curves of two runs are minima at different places.
     """
-    column = "landscape.eta.q0.values"
-    if column not in df.columns:
-        raise ValueError("No landscape sweep in this DataFrame, run study-6 first.")
-
     for _, row in df.iterrows():
-        if isinstance(row.get(column), (list, tuple, np.ndarray)):
+        if any(
+            c.startswith("landscape.eta.")
+            and c.endswith(".values")
+            and isinstance(row.get(c), (list, tuple, np.ndarray))
+            for c in row.index
+        ):
             return row
 
     raise ValueError("No landscape sweep in this DataFrame, run study-6 first.")
 
 
-def _landscape_qubits(row: pd.Series) -> List[int]:
-    """Indices of the qubits swept in `row`, in order."""
-    return sorted(
-        int(c.split(".q")[1].split(".")[0])
-        for c in row.index
-        if c.startswith("landscape.eta.q") and c.endswith(".values")
-    )
+def _landscape_gates(row: pd.Series) -> List[str]:
+    """The encoding gates swept in `row`, as their ``l<layer>.q<qubit>`` keys.
 
-
-def landscape_over_eta(df: pd.DataFrame, curve: str, show_pulse: bool = False):
+    Ordered by the generator the gate drives, so the panels of a figure run
+    from the lowest spectral component to the highest.
     """
-    Plot the loss over the encoding scaler, one panel per encoding generator.
+    keys = [
+        c[len("landscape.eta.") : -len(".values")]
+        for c in row.index
+        if c.startswith("landscape.eta.") and c.endswith(".values")
+    ]
+
+    return sorted(keys, key=lambda k: (row[f"landscape.generator.{k}"], k))
+
+
+def _gate_label(row: pd.Series, key: str, unique: bool) -> str:
+    """Trace name of an encoding gate, by the generator it drives.
+
+    Two gates can share a generator, across layers or, under hamming, across
+    qubits as well. Their position is only spelled out when it is needed to
+    tell them apart.
+    """
+    generator = row[f"landscape.generator.{key}"]
+    if unique:
+        return f"$\\gamma = {generator:g}$"
+
+    layer, qubit = key.split(".")
+    return f"$\\gamma = {generator:g}$ ({layer}{qubit})"
+
+
+def landscape_over_eta(df: pd.DataFrame, curve: str):
+    """
+    Plot the loss over the encoding scaler, one panel per encoding gate.
 
     Each panel is a slice through the loss in which a single encoding scaler
     is swept while the others sit at their target values, so the slice runs
     from the initial scaler $\\eta = 1$ through the aligned one. The
-    oscillation along $\\eta$ has period $1/(mts \\cdot g)$ for a generator
-    $g$, so the panels of the higher generators pack proportionally more local
-    minima between the two. The panels share the scaler axis but not the loss
-    axis, which differs by orders of magnitude between them.
+    oscillation along $\\eta$ has period $1/(mts \\cdot \\gamma)$ for a gate
+    driving the generator $\\gamma$, so the panels of the higher generators
+    pack proportionally more local minima between the two. The panels share the
+    scaler axis but not the loss axis, which differs by orders of magnitude
+    between them.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
@@ -242,51 +265,38 @@ def landscape_over_eta(df: pd.DataFrame, curve: str, show_pulse: bool = False):
         curve (str): Which loss to plot, "profile" for the loss with the
             coefficients concentrated out or "fixed" for the loss at the
             current variational parameters.
-        show_pulse (bool): Whether to overlay the same sweep evaluated through
-            the pulse backend, which is only defined for the "fixed" curve.
 
     Returns:
         go.Figure: A figure showing the loss over the encoding scaler.
     """
     row = _landscape_row(df)
-    qubits = _landscape_qubits(row)
+    gates = _landscape_gates(row)
+    generators = [row[f"landscape.generator.{key}"] for key in gates]
+    unique = len(set(generators)) == len(generators)
 
     fig = make_subplots(
-        rows=len(qubits),
+        rows=len(gates),
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.04,
+        vertical_spacing=0.15 / len(gates),
     )
     color_it = iter(design.prim_colors_lst)
 
-    for it, q in enumerate(qubits):
-        grid = np.array(row[f"landscape.eta.q{q}.values"])
-        values = np.array(row[f"landscape.{curve}.q{q}.values"])
-        generator = row[f"landscape.generator.q{q}"]
-        target = row[f"landscape.target_eta.q{q}"]
+    for it, key in enumerate(gates):
+        grid = np.array(row[f"landscape.eta.{key}.values"])
+        values = np.array(row[f"landscape.{curve}.{key}.values"])
+        target = row[f"landscape.target_eta.{key}"]
         color = next(color_it)
 
         fig.add_scatter(
             x=grid,
             y=values,
             mode="lines",
-            name=f"$g = {generator:.0f}$",
+            name=_gate_label(row, key, unique),
             line=dict(color=color, width=1.5),
             row=it + 1,
             col=1,
         )
-
-        if show_pulse:
-            pulse = np.array(row[f"landscape.pulse.q{q}.values"])
-            fig.add_scatter(
-                x=grid[::10],
-                y=pulse[::10],
-                mode="markers",
-                showlegend=False,
-                marker=dict(color=color, size=5, symbol="circle-open"),
-                row=it + 1,
-                col=1,
-            )
 
         fig.add_vline(
             x=target,
@@ -302,28 +312,15 @@ def landscape_over_eta(df: pd.DataFrame, curve: str, show_pulse: bool = False):
         )
         fig.update_yaxes(title_text="MSE", row=it + 1, col=1)
 
-    if show_pulse:
-        fig.add_scatter(
-            x=[None],
-            y=[None],
-            mode="markers",
-            name="pulse",
-            marker=dict(color="gray", size=5, symbol="circle-open"),
-            row=1,
-            col=1,
-        )
-
-    fig.update_xaxes(title_text="$\\eta$", row=len(qubits), col=1)
+    fig.update_xaxes(title_text="$\\eta$", row=len(gates), col=1)
     fig.update_layout(
-        title=(
-            "Concentrated" if curve == "profile" else "Fixed-parameter"
-        )
+        title=("Concentrated" if curve == "profile" else "Fixed-parameter")
         + " Loss over Encoding Scaler",
         template=design.template,
         font=dict(size=design.font_size),
         legend=design.horizontal_legend(),
         margin=dict(b=120),
-        height=900,
+        height=300 * len(gates),
     )
 
     return fig
@@ -360,17 +357,18 @@ def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
 
 def landscape_scaling(df: pd.DataFrame):
     """
-    Plot the basin width and the number of local minima against the encoding
-    generator they belong to.
+    Plot the basin width and the number of local minima against the generator
+    the swept gate drives.
 
     Both follow from the Dirichlet kernel of the sample window: the loss
-    oscillates with period $1/(mts \\cdot g)$ along the scaler of a generator
-    $g$, so the main lobe spans $2/(mts \\cdot g)$ and a path of length
-    $|\\eta^* - 1|$ covers $mts \\cdot g \\, |\\eta^* - 1|$ oscillations. The
-    measured values are read off the concentrated loss. The basin reference is
-    exact, the minima reference is the number of oscillations on the path,
-    which bounds the strict local minima from above because the lobes next to
-    the main one merge into it.
+    oscillates with period $1/(mts \\cdot \\gamma)$ along the scaler of a gate
+    driving the generator $\\gamma$, so the main lobe spans
+    $2/(mts \\cdot \\gamma)$ and a path of length $|\\eta^* - 1|$ covers
+    $mts \\cdot \\gamma \\, |\\eta^* - 1|$ oscillations. The measured values are
+    read off the concentrated loss. The basin reference is exact, the minima
+    reference is the number of oscillations on the path, which bounds the
+    strict local minima from above because the lobes next to the main one merge
+    into it.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
@@ -383,18 +381,19 @@ def landscape_scaling(df: pd.DataFrame):
     mts = row["landscape.mts"]
 
     generators, widths, counts, distances = [], [], [], []
-    for q in _landscape_qubits(row):
-        grid = np.array(row[f"landscape.eta.q{q}.values"])
-        values = np.array(row[f"landscape.profile.q{q}.values"])
-        target = row[f"landscape.target_eta.q{q}"]
+    for key in _landscape_gates(row):
+        grid = np.array(row[f"landscape.eta.{key}.values"])
+        values = np.array(row[f"landscape.profile.{key}.values"])
+        target = row[f"landscape.target_eta.{key}"]
 
         width, count = _basin_and_minima(grid, values, target)
-        generators.append(row[f"landscape.generator.q{q}"])
+        generators.append(row[f"landscape.generator.{key}"])
         widths.append(width)
         counts.append(count)
         distances.append(abs(target - 1.0))
 
     generators = np.array(generators)
+    order = np.argsort(generators)
 
     # the counts reach zero where the aligned scaler still sits inside the
     # initial basin, so they get a linear axis of their own while the basin
@@ -408,10 +407,10 @@ def landscape_scaling(df: pd.DataFrame):
         marker=dict(color=design.prim_colors_lst[0], size=design.marker_size),
     )
     fig.add_scatter(
-        x=generators,
-        y=mts * generators * np.array(distances),
+        x=generators[order],
+        y=(mts * generators * np.array(distances))[order],
         mode="lines",
-        name="$mts \\cdot g \\cdot |\\eta^* - 1|$",
+        name="$mts \\cdot \\gamma \\cdot |\\eta^* - 1|$",
         line=dict(color=design.prim_colors_lst[0], width=1.5, dash="dash"),
     )
     fig.add_scatter(
@@ -423,10 +422,10 @@ def landscape_scaling(df: pd.DataFrame):
         marker=dict(color=design.prim_colors_lst[1], size=design.marker_size),
     )
     fig.add_scatter(
-        x=generators,
-        y=2.0 / (mts * generators),
+        x=generators[order],
+        y=2.0 / (mts * generators[order]),
         mode="lines",
-        name="$2 / (mts \\cdot g)$",
+        name="$2 / (mts \\cdot \\gamma)$",
         yaxis="y2",
         line=dict(color=design.prim_colors_lst[1], width=1.5, dash="dash"),
     )
@@ -434,7 +433,10 @@ def landscape_scaling(df: pd.DataFrame):
     fig.update_layout(
         title="Landscape Scaling over Encoding Generator",
         xaxis=dict(
-            title="$g$", type="log", tickmode="array", tickvals=generators
+            title="$\\gamma$",
+            type="log",
+            tickmode="array",
+            tickvals=np.unique(generators),
         ),
         yaxis=dict(
             title="local minima on the path",

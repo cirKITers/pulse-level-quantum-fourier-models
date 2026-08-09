@@ -474,52 +474,65 @@ def calculate_spectrum(
     return {}
 
 
-def _balanced_ternary(frequencies: np.ndarray, n_qubits: int) -> np.ndarray:
+def _encoding_gates(model: Model, feature: int = 0) -> List[Tuple[int, int, float]]:
     """
-    Decompose each comb frequency into the encoding signs that generate it.
+    The encoding gate instances of one input feature and their generators.
 
-    The comb of a ternary encoding is the Minkowski sum
-    $\\omega(s) = \\sum_q s_q 3^q$ over $s \\in \\{-1, 0, 1\\}^{n}$, which is a
-    bijection onto the integers $[-(3^n - 1)/2, (3^n - 1)/2]$. Inverting it
-    assigns every Fourier coefficient to exactly one sign vector, which is what
-    makes the frequency sweep expressible in closed form: an encoding scaler
-    $\\eta_q$ moves the component $\\omega(s)$ to $\\sum_q s_q 3^q \\eta_q$
-    while leaving the coefficient untouched.
+    Every position the data re-upload mask marks is one encoding gate, and each
+    of them carries its own scaler. Which frequency a gate contributes follows
+    from the encoding strategy, where qubit $q$ is driven at
+    $\\text{base}^q$ with base 1, 2 or 3 for hamming, binary and ternary. Two
+    gates can therefore share a generator, either across layers or, under
+    hamming, across qubits as well.
 
     Args:
-        frequencies (np.ndarray): The model comb, one integer per component.
-        n_qubits (int): Number of qubits, i.e. the number of digits.
+        model (Model): The QFM model.
+        feature (int, optional): Index of the input feature. Defaults to 0.
 
     Returns:
-        np.ndarray: Signs $s$ of shape (n_frequencies, n_qubits).
+        List[Tuple[int, int, float]]: Layer, qubit and generator frequency of
+        each encoding gate, in data re-upload order.
 
     Raises:
-        ValueError: If the comb is not the ternary one, i.e. if the map is not
-            a bijection and a coefficient cannot be attributed to a single
-            sign vector.
+        ValueError: If the encoding strategy has no per-gate generator to
+            scale.
     """
-    if len(frequencies) != 3**n_qubits:
+    base = {"hamming": 1, "binary": 2, "ternary": 3}.get(model._enc._strategy)
+    if base is None:
         raise ValueError(
-            f"Expected {3**n_qubits} comb components for a ternary encoding on "
-            f"{n_qubits} qubits, got {len(frequencies)}. The landscape sweep "
-            "needs a redundancy-free comb, i.e. encoding_strategy='ternary' "
-            "with n_layers=1."
+            f"The landscape sweep does not support the "
+            f"{model._enc._strategy!r} encoding strategy, which has no "
+            "per-gate generator to scale."
         )
 
-    signs = np.zeros((len(frequencies), n_qubits), dtype=int)
-    for i, frequency in enumerate(frequencies):
-        remainder = int(round(float(frequency)))
-        for q in range(n_qubits):
-            digit = ((remainder + 1) % 3) - 1
-            signs[i, q] = digit
-            remainder = (remainder - digit) // 3
-        if remainder != 0:
-            raise ValueError(
-                f"Frequency {frequency} is outside the ternary comb of "
-                f"{n_qubits} qubits."
-            )
+    mask = np.asarray(model.data_reupload[..., feature], dtype=bool)
+    return [(int(l), int(q), float(base**q)) for l, q in zip(*np.nonzero(mask))]
 
-    return signs
+
+def _comb_support(generators: np.ndarray, etas: np.ndarray) -> np.ndarray:
+    """
+    The frequency comb the encoding reaches at the given scalers.
+
+    Each encoding gate contributes $-1$, $0$ or $+1$ times its scaled generator
+    $\\gamma_j \\eta_j$, so the comb is their Minkowski sum. This mirrors
+    `Datasets._displace_generators`, which is what builds the off-grid target,
+    down to the rounding it deduplicates on. Deduplicating as the sum is built
+    keeps the intermediate sets at the size of the comb rather than
+    $3^{n_\\text{gates}}$.
+
+    Args:
+        generators (np.ndarray): Generator frequency of each encoding gate.
+        etas (np.ndarray): Scaler of each encoding gate.
+
+    Returns:
+        np.ndarray: The sorted comb.
+    """
+    reach = {0.0}
+    for generator, eta in zip(generators, etas):
+        step = generator * eta
+        reach = {round(a + s * step, 9) for a in reach for s in (-1.0, 0.0, 1.0)}
+
+    return np.array(sorted(reach))
 
 
 def _sweep_grid(
@@ -530,8 +543,8 @@ def _sweep_grid(
 
     Two frequencies separated by $\\Delta$ correlate over the sample window as
     a Dirichlet kernel whose sidelobes sit $1/mts$ apart. A scaler on a
-    generator of size $g$ detunes its components at rate $g$, so the loss
-    oscillates with period $1/(mts \\, g)$ along $\\eta$.
+    generator of size $\\gamma$ detunes its components at rate $\\gamma$, so the
+    loss oscillates with period $1/(mts \\, \\gamma)$ along $\\eta$.
 
     Args:
         eta_min, eta_max (float): Bounds of the scaler axis.
@@ -547,10 +560,10 @@ def _sweep_grid(
     return np.arange(eta_min, eta_max + 0.5 * step, step)
 
 
-def _profile_mse(x: np.ndarray, y: np.ndarray, omegas: np.ndarray) -> float:
+def _profile_mse(x: np.ndarray, y: np.ndarray, support: np.ndarray) -> float:
     """
-    Loss of the best real Fourier fit on the comb `omegas`, i.e. the loss with
-    the coefficients concentrated out.
+    Loss of the best real Fourier fit on `support`, i.e. the loss with the
+    coefficients concentrated out.
 
     This is the separable (variable projection) view of the problem: the
     coefficients enter linearly and are solved for in closed form, leaving a
@@ -567,15 +580,15 @@ def _profile_mse(x: np.ndarray, y: np.ndarray, omegas: np.ndarray) -> float:
     Args:
         x (np.ndarray): Domain samples of shape (n_points,).
         y (np.ndarray): Target values of shape (n_points,).
-        omegas (np.ndarray): Comb frequencies, duplicates and signs allowed.
+        support (np.ndarray): Comb frequencies, signs allowed.
 
     Returns:
         float: Mean squared residual of the least-squares fit.
     """
-    # duplicates are left in rather than merged, the least-squares solve drops
-    # the redundant directions itself
-    phases = np.abs(omegas)[None, :] * x[:, None]
-    design = np.concatenate([np.cos(phases), np.sin(phases)], axis=1)
+    phases = np.unique(np.abs(support[support != 0.0]))[None, :] * x[:, None]
+    design = np.concatenate(
+        [np.ones((len(x), 1)), np.cos(phases), np.sin(phases)], axis=1
+    )
 
     residual = y - design @ np.linalg.lstsq(design, y, rcond=None)[0]
     return float(np.mean(residual**2))
@@ -585,6 +598,7 @@ def _pulse_sweep(
     model: Model,
     x: jnp.ndarray,
     y: np.ndarray,
+    layer: int,
     qubit: int,
     slot: int,
     grid: np.ndarray,
@@ -603,7 +617,8 @@ def _pulse_sweep(
         model (Model): The QFM model.
         x (jnp.ndarray): Domain samples of shape (n_points, n_input_feat).
         y (np.ndarray): Target values of shape (n_points,).
-        qubit (int): Qubit whose encoding scaler is swept.
+        layer (int): Layer of the encoding gate whose scaler is swept.
+        qubit (int): Qubit of that gate.
         slot (int): Pulse parameter slot holding the amplitude.
         grid (np.ndarray): Scaler values to evaluate.
         frozen (np.ndarray): Amplitude scalers of the remaining gates, shape
@@ -619,7 +634,8 @@ def _pulse_sweep(
     saved = (model.enc_pulse_params, list(model.repeat_batch_axis))
     try:
         for start in track(
-            range(0, len(grid), chunk), description=f"Sweeping qubit {qubit}.."
+            range(0, len(grid), chunk),
+            description=f"Sweeping layer {layer} qubit {qubit}..",
         ):
             block = grid[start : start + chunk]
             padded = np.full(chunk, block[-1])
@@ -627,7 +643,7 @@ def _pulse_sweep(
 
             enc_pulse_params = np.ones((chunk, *model._enc_pulse_shape))
             enc_pulse_params[..., slot] = frozen
-            enc_pulse_params[:, :, qubit, slot] = padded[:, None]
+            enc_pulse_params[:, layer, qubit, slot] = padded
 
             prediction = np.asarray(
                 model(
@@ -681,39 +697,38 @@ def sweep_loss_landscape(
     chunk: int,
 ) -> Dict:
     """
-    Sweeps the encoding scaler of each qubit and logs the resulting loss
-    landscape, one curve per encoding generator.
+    Sweeps the scaler of each encoding gate and logs the resulting loss
+    landscape, one curve per gate.
 
-    Training the encoding scalers is a frequency estimation problem: the
-    scaler $\\eta_q$ multiplies the generator $3^q$ of its qubit, so the loss
-    along $\\eta_q$ is the misfit between a detuned comb and the target. That
-    misfit oscillates with period $1/(mts \\cdot 3^q)$, which puts a local
+    Training the encoding scalers is a frequency estimation problem: the scaler
+    $\\eta_j$ multiplies the generator $\\gamma_j$ of its gate, so the loss
+    along $\\eta_j$ is the misfit between a detuned comb and the target. That
+    misfit oscillates with period $1/(mts \\cdot \\gamma_j)$, which puts a local
     minimum on every sidelobe and shrinks the basin around the aligned scaler
-    in proportion to the generator. Sweeping one qubit at a time therefore
-    resolves the landscape per frequency scale, which is what the per-qubit
+    in proportion to the generator. Sweeping one gate at a time therefore
+    resolves the landscape per spectral component, which is what the per-gate
     curves report.
 
-    Three curves are logged per qubit:
+    The gates are the data re-upload instances, so a model with several layers
+    contributes one curve per layer and qubit, and two gates that drive the same
+    generator get one curve each. Which generator a gate carries follows from
+    the encoding strategy, see :func:`_encoding_gates`.
 
-    - `fixed`, the loss at the current variational parameters. This is the
-      slice the optimizer sees before its coefficients adapt, evaluated in
-      closed form from the comb coefficients, which are independent of the
-      scalers.
+    Two curves are logged per gate:
+
     - `profile`, the loss with the coefficients concentrated out, see
       :func:`_profile_mse`. This is the landscape of the frequencies alone and
       reaches zero wherever the comb covers the target support.
-    - `pulse`, the `fixed` curve evaluated through the pulse backend, which
-      confirms that the pulse amplitude scaler moves the comb the same way the
-      analytic scaler does.
+    - `fixed`, the loss at the current variational parameters, i.e. the slice
+      the optimizer sees before its coefficients adapt.
 
-    The remaining qubits are held at their target scalers, so each slice
-    contains the aligned configuration and the path from the initial scaler
-    $\\eta = 1$ to it.
+    The remaining gates are held at their target scalers, so each slice contains
+    the aligned configuration and the path from the initial scaler $\\eta = 1$
+    to it.
 
     Args:
-        model (Model): The QFM model, which must use a ternary encoding with a
-            single layer so that every coefficient belongs to one comb sign
-            vector.
+        model (Model): The QFM model, which must use a hamming, binary or
+            ternary encoding.
         train_loader (DataLoader): Loader holding the domain samples and the
             target series.
         target_etas (Optional[jnp.ndarray]): The scalers that align the comb
@@ -722,7 +737,7 @@ def sweep_loss_landscape(
             oscillation period along the scaler axis.
         eta_min, eta_max (float): Bounds of the scaler axis.
         points_per_period (int): Samples per loss oscillation.
-        chunk (int): Number of scalers per pulse-backend model call.
+        chunk (int): Number of scalers per model call.
     """
     if target_etas is None:
         raise ValueError(
@@ -735,64 +750,52 @@ def sweep_loss_landscape(
             f"{model.n_input_feat}."
         )
 
-    x = train_loader.dataset.tensors[0].numpy()
+    domain = train_loader.dataset.tensors[0].numpy()
+    x = np.asarray(domain).ravel()
     y = train_loader.dataset.tensors[1].numpy()
 
-    # the coefficients of the comb do not depend on the encoding scalers: the
-    # scalers only move the comb, so one spectrum at eta=1 fixes the analytic
-    # loss for every scaler. mts=1 keeps this on the integer comb, where the
-    # ternary decomposition is defined.
-    coefficients, frequencies = Coefficients.get_spectrum(
-        model,
-        mts=1,
-        mfs=1,
-        shift=True,
-        trim=True,
-        numerical_cap=-1,
-        gate_mode="unitary",
-        force_mean=True,
-        execution_type="expval",
-    )
-    coefficients = np.asarray(coefficients).ravel()
-    signs = _balanced_ternary(np.asarray(frequencies).ravel(), model.n_qubits)
-
+    gates = _encoding_gates(model)
+    generators = np.array([generator for _, _, generator in gates])
     # amplitude is the leading pulse parameter of the encoding gate and the
     # only one that scales the rotation angle, i.e. the generator
     slot = int(model._enc_pulse_offsets[0])
     frozen = np.asarray(target_etas)[0]
-    generators = 3.0 ** np.arange(model.n_qubits)
-    domain = np.asarray(x).ravel()
-    phase = domain[:, None, None] * (signs * generators)[None, :, :]
+    aligned = np.array([frozen[layer, qubit] for layer, qubit, _ in gates])
 
-    log.info(f"Target etas: {frozen.tolist()}, generators: {generators.tolist()}")
+    log.info(f"Encoding gates (layer, qubit, generator): {gates}")
+    log.info(f"Target etas: {aligned.tolist()}")
     mlflow.log_param("landscape.mts", mts)
-    for q in range(model.n_qubits):
-        mlflow.log_param(f"landscape.generator.q{q}", float(generators[q]))
-        mlflow.log_param(f"landscape.target_eta.q{q}", float(frozen[0, q]))
-
-    _verify_landscape(model, x, y, coefficients, phase, frozen, slot)
-
-    for q in range(model.n_qubits):
-        grid = _sweep_grid(eta_min, eta_max, points_per_period, mts, generators[q])
-        log.info(f"Qubit {q}: {len(grid)} scalers on generator {generators[q]}")
-
-        etas = np.tile(frozen[0], (len(grid), 1))
-        etas[:, q] = grid
-        omegas = etas @ (signs * generators).T
-
-        predictions = np.real(
-            np.einsum("tkn,k->nt", np.exp(1j * (phase @ etas.T)), coefficients)
+    mlflow.log_param("landscape.n_gates", len(gates))
+    for layer, qubit, generator in gates:
+        mlflow.log_param(f"landscape.generator.l{layer}.q{qubit}", generator)
+        mlflow.log_param(
+            f"landscape.target_eta.l{layer}.q{qubit}", float(frozen[layer, qubit])
         )
-        fixed = ((predictions - y[None, :]) ** 2).mean(axis=1)
-        profile = np.array([_profile_mse(domain, y, o) for o in omegas])
-        pulse = _pulse_sweep(model, x, y, q, slot, grid, frozen, chunk)
+
+    _verify_landscape(model, domain, generators, frozen, aligned, slot)
+
+    for j, (layer, qubit, generator) in enumerate(gates):
+        grid = _sweep_grid(eta_min, eta_max, points_per_period, mts, generator)
+        log.info(
+            f"Gate {j} (layer {layer}, qubit {qubit}): {len(grid)} scalers on "
+            f"generator {generator}"
+        )
+
+        etas = np.tile(aligned, (len(grid), 1))
+        etas[:, j] = grid
+
+        profile = np.array(
+            [_profile_mse(x, y, _comb_support(generators, eta)) for eta in etas]
+        )
+        fixed = _pulse_sweep(
+            model, domain, y, layer, qubit, slot, grid, frozen, chunk
+        )
 
         _log_curves(
             {
-                f"landscape.eta.q{q}": grid,
-                f"landscape.fixed.q{q}": fixed,
-                f"landscape.profile.q{q}": profile,
-                f"landscape.pulse.q{q}": pulse,
+                f"landscape.eta.l{layer}.q{qubit}": grid,
+                f"landscape.profile.l{layer}.q{qubit}": profile,
+                f"landscape.fixed.l{layer}.q{qubit}": fixed,
             }
         )
 
@@ -801,52 +804,48 @@ def sweep_loss_landscape(
 
 def _verify_landscape(
     model: Model,
-    x: jnp.ndarray,
-    y: np.ndarray,
-    coefficients: np.ndarray,
-    phase: np.ndarray,
+    domain: jnp.ndarray,
+    generators: np.ndarray,
     frozen: np.ndarray,
+    aligned: np.ndarray,
     slot: int,
 ) -> None:
     """
-    Check the closed-form loss against the model it stands in for.
+    Check the two assumptions the sweep rests on.
 
-    The analytic curve is only a shortcut for the unitary model, and the pulse
-    curve is only comparable to it while the calibrated pulses reproduce their
-    gates, so both are confirmed on a few scalers before the sweep runs.
+    The comb is enumerated from the encoding generators rather than read off
+    the model, so at unit scalers it has to reproduce the model's own comb. And
+    the scalers are swept at pulse level, which only stands in for a frequency
+    scaling while the calibrated pulses reproduce their gates.
 
     Args:
         model (Model): The QFM model.
-        x (jnp.ndarray): Domain samples.
-        y (np.ndarray): Target values.
-        coefficients (np.ndarray): Comb coefficients at $\\eta = 1$.
-        phase (np.ndarray): Per-component phase $x \\, s \\, 3^q$ of shape
-            (n_points, n_frequencies, n_qubits).
+        domain (jnp.ndarray): Domain samples of shape (n_points, n_input_feat).
+        generators (np.ndarray): Generator frequency of each encoding gate.
         frozen (np.ndarray): Target scalers of shape (n_layers, n_qubits).
+        aligned (np.ndarray): The same scalers, per encoding gate.
         slot (int): Pulse parameter slot holding the amplitude.
 
     Raises:
-        ValueError: If either check exceeds its tolerance.
+        ValueError: If either check fails.
     """
-    probes = np.tile(frozen[0], (4, 1))
-    probes[:, 0] = [0.37, 0.8, 1.23, 1.61]
+    comb = _comb_support(generators, np.ones_like(generators))
+    expected = np.asarray(model.frequencies[0], dtype=float)
+    if not np.array_equal(comb, expected):
+        raise ValueError(
+            f"The comb enumerated from the encoding generators has "
+            f"{len(comb)} components, the model reports {len(expected)}. The "
+            "per-gate generators do not describe this encoding."
+        )
 
-    analytic_dev = 0.0
-    for eta in probes:
-        enc_params = jnp.array(eta.reshape(*frozen.shape, 1))
-        prediction = model(
-            params=model.params,
-            inputs=x,
-            execution_type="expval",
-            force_mean=True,
-            gate_mode="unitary",
-            enc_params=enc_params,
-        )
-        expected = np.real(np.exp(1j * (phase @ eta)) @ coefficients)
-        analytic_dev = max(
-            analytic_dev,
-            abs(Losses.mse(np.asarray(prediction), y) - Losses.mse(expected, y)),
-        )
+    unitary = model(
+        params=model.params,
+        inputs=domain,
+        execution_type="expval",
+        force_mean=True,
+        gate_mode="unitary",
+        enc_params=jnp.array(frozen[..., None]),
+    )
     model.enc_params = jnp.ones((*frozen.shape, 1))
 
     saved = (model.enc_pulse_params, list(model.repeat_batch_axis))
@@ -855,7 +854,7 @@ def _verify_landscape(
         enc_pulse_params[..., slot] = frozen
         pulse = model(
             params=model.params,
-            inputs=x,
+            inputs=domain,
             execution_type="expval",
             force_mean=True,
             gate_mode="enc_pulse",
@@ -863,25 +862,16 @@ def _verify_landscape(
         )
     finally:
         model.enc_pulse_params, model.repeat_batch_axis = saved
-    pulse_dev = float(
-        np.max(np.abs(np.asarray(pulse) - np.real(np.exp(1j * (phase @ frozen[0])) @ coefficients)))
-    )
 
-    log.info(f"Landscape checks: analytic={analytic_dev:.3e}, pulse={pulse_dev:.3e}")
-    mlflow.log_metric("landscape.check.analytic", analytic_dev)
-    mlflow.log_metric("landscape.check.pulse", pulse_dev)
+    deviation = float(np.max(np.abs(np.asarray(pulse) - np.asarray(unitary))))
+    log.info(f"Landscape checks: comb={len(comb)} components, pulse={deviation:.3e}")
+    mlflow.log_metric("landscape.check.pulse", deviation)
 
-    if analytic_dev > 1e-8:
+    if deviation > 1e-3:
         raise ValueError(
-            f"Closed-form loss deviates from the unitary model by "
-            f"{analytic_dev:.3e}, the comb decomposition is not valid here."
-        )
-    if pulse_dev > 1e-3:
-        raise ValueError(
-            f"Pulse backend deviates from the unitary model by {pulse_dev:.3e} "
+            f"Pulse backend deviates from the unitary model by {deviation:.3e} "
             "at the target scalers, the pulses no longer reproduce their gates."
         )
-
 
 def log_metrics(
     model,
