@@ -484,7 +484,8 @@ def generate_fourier_series(
     Returns
     -------
     Dict[str, jnp.ndarray]
-        Domain samples, Fourier series samples and the coefficients.
+        Domain samples, Fourier series samples, the coefficients and the
+        target frequencies.
     """
     random_key, frequency_key = jax.random.split(jax.random.PRNGKey(seed))
 
@@ -527,6 +528,7 @@ def generate_fourier_series(
         "domain_samples": domain_samples,
         "fourier_samples": fourier_samples,
         "coefficients": coefficients,
+        "target_frequencies": frequencies,
         "target_etas": target_etas,
     }
 

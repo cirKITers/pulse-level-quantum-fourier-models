@@ -194,6 +194,7 @@ def viz_study_6(df):
     figures.append(landscape_over_eta(df, "profile"))
     figures.append(landscape_over_eta(df, "fixed"))
     figures.append(landscape_scaling(df))
+    figures.append(landscape_scaling_frequencies(df))
 
     return figures
 
@@ -264,11 +265,17 @@ def landscape_over_eta(df: pd.DataFrame, curve: str):
             columns produced by ``generate_df``.
         curve (str): Which loss to plot, "profile" for the loss with the
             coefficients concentrated out or "fixed" for the loss at the
-            current variational parameters.
+            current variational parameters. The profile panels overlay the
+            closed-form Dirichlet approximation when the run logged it.
 
     Returns:
         go.Figure: A figure showing the loss over the encoding scaler.
     """
+    # the concentrated loss reaches machine zero where the comb covers the
+    # target, which a log axis cannot show. Values below this floor are drawn
+    # at the floor.
+    floor = 1e-10
+
     row = _landscape_row(df)
     gates = _landscape_gates(row)
     generators = [row[f"landscape.generator.{key}"] for key in gates]
@@ -290,13 +297,26 @@ def landscape_over_eta(df: pd.DataFrame, curve: str):
 
         fig.add_scatter(
             x=grid,
-            y=values,
+            y=np.clip(values, floor, None),
             mode="lines",
             name=_gate_label(row, key, unique),
             line=dict(color=color, width=1.5),
             row=it + 1,
             col=1,
         )
+
+        analytic = row.get(f"landscape.analytic.{key}.values")
+        if curve == "profile" and isinstance(analytic, (list, tuple, np.ndarray)):
+            fig.add_scatter(
+                x=grid,
+                y=np.clip(np.array(analytic), floor, None),
+                mode="lines",
+                name="analytic",
+                line=dict(color="gray", width=1, dash="dash"),
+                showlegend=it == 0,
+                row=it + 1,
+                col=1,
+            )
 
         fig.add_vline(
             x=target,
@@ -310,7 +330,7 @@ def landscape_over_eta(df: pd.DataFrame, curve: str):
             row=it + 1,
             col=1,
         )
-        fig.update_yaxes(title_text="MSE", row=it + 1, col=1)
+        fig.update_yaxes(title_text="MSE", type="log", row=it + 1, col=1)
 
     fig.update_xaxes(title_text="$\\eta$", row=len(gates), col=1)
     fig.update_layout(
@@ -438,6 +458,164 @@ def landscape_scaling(df: pd.DataFrame):
             tickmode="array",
             tickvals=np.unique(generators),
         ),
+        yaxis=dict(
+            title="local minima on the path",
+            rangemode="tozero",
+            color=design.prim_colors_lst[0],
+        ),
+        yaxis2=dict(
+            title="basin width",
+            type="log",
+            overlaying="y",
+            side="right",
+            color=design.prim_colors_lst[1],
+        ),
+        template=design.template,
+        font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
+        margin=dict(b=160),
+    )
+
+    return fig
+
+
+
+def _landscape_rows(df: pd.DataFrame) -> List[pd.Series]:
+    """All rows of `df` that carry a landscape sweep."""
+    rows = []
+    for _, row in df.iterrows():
+        if any(
+            c.startswith("landscape.eta.")
+            and c.endswith(".values")
+            and isinstance(row.get(c), (list, tuple, np.ndarray))
+            for c in row.index
+        ):
+            rows.append(row)
+
+    if not rows:
+        raise ValueError("No landscape sweep in this DataFrame, run study-6 first.")
+
+    return rows
+
+
+def _strategy_generator_max(strategy: str, n_frequencies: float) -> float:
+    """Largest encoding generator of a single-layer model with the given
+    spectrum size.
+
+    Inverts the comb sizes $|\\Omega| = 3^n$, $2^{n+1} - 1$ and $2n + 1$ of
+    the ternary, binary and hamming strategies to the generator of their
+    highest qubit, $3^{n-1}$, $2^{n-1}$ and $1$.
+    """
+    if strategy == "ternary":
+        return n_frequencies / 3.0
+    if strategy == "binary":
+        return (n_frequencies + 1) / 4.0
+    return 1.0
+
+
+def landscape_scaling_frequencies(df: pd.DataFrame):
+    """
+    Plot the hardness of the hardest encoding scaler against the number of
+    frequencies of the model, one point per run, one trace per encoding
+    strategy.
+
+    Hardness is read off the concentrated loss of the gate with the largest
+    generator $\\gamma_{max}$: the number of local minima between the initial
+    and the aligned scaler, and the width of the basin around the aligned one.
+    The Dirichlet geometry gives both in closed form,
+    $N = mts \\cdot \\gamma_{max} \\cdot |\\eta^* - 1|$ and
+    $W = 2 / (mts \\cdot \\gamma_{max})$, and the encoding strategy ties
+    $\\gamma_{max}$ to the spectrum size $|\\Omega|$: $|\\Omega| / 3$ for
+    ternary, $(|\\Omega| + 1) / 4$ for binary and $1$ for hamming. The
+    reference lines are these expressions with the mean $|\\eta^* - 1|$ of the
+    strategy, so the exponential encodings show hardness growing linearly with
+    the spectrum while hamming stays flat.
+
+    Args:
+        df (pd.DataFrame): DataFrame carrying the list-valued landscape
+            columns produced by ``generate_df``, one row per run of the
+            scaling sweep.
+
+    Returns:
+        go.Figure: A figure showing both quantities over the spectrum size.
+    """
+    points = {}
+    for row in _landscape_rows(df):
+        # the generator inversion above only holds for a single layer, so
+        # multi-layer runs in the same experiment are left out
+        if row["landscape.n_gates"] != row["model.n_qubits"]:
+            continue
+        strategy = row["model.encoding_strategy"]
+        key = max(_landscape_gates(row), key=lambda k: row[f"landscape.generator.{k}"])
+
+        grid = np.array(row[f"landscape.eta.{key}.values"])
+        values = np.array(row[f"landscape.profile.{key}.values"])
+        target = row[f"landscape.target_eta.{key}"]
+        width, count = _basin_and_minima(grid, values, target)
+
+        points.setdefault(strategy, []).append(
+            {
+                "n_frequencies": row["landscape.n_frequencies"],
+                "gamma": row[f"landscape.generator.{key}"],
+                "count": count,
+                "width": width,
+                "distance": abs(target - 1.0),
+                "mts": row["landscape.mts"],
+            }
+        )
+
+    fig = go.Figure()
+    symbols = dict(zip(sorted(points), design.symbols_lst))
+
+    for strategy, entries in sorted(points.items()):
+        entries = sorted(entries, key=lambda e: e["n_frequencies"])
+        n = np.array([e["n_frequencies"] for e in entries])
+        mts = entries[0]["mts"]
+        distance = np.mean([e["distance"] for e in entries])
+        gamma = np.array([_strategy_generator_max(strategy, v) for v in n])
+
+        fig.add_scatter(
+            x=n,
+            y=[e["count"] for e in entries],
+            mode="markers",
+            name=f"minima ({strategy})",
+            marker=dict(
+                color=design.prim_colors_lst[0],
+                size=design.marker_size,
+                symbol=symbols[strategy],
+            ),
+        )
+        fig.add_scatter(
+            x=n,
+            y=mts * gamma * distance,
+            mode="lines",
+            showlegend=False,
+            line=dict(color=design.prim_colors_lst[0], width=1.5, dash="dash"),
+        )
+        fig.add_scatter(
+            x=n,
+            y=[e["width"] for e in entries],
+            mode="markers",
+            name=f"basin ({strategy})",
+            yaxis="y2",
+            marker=dict(
+                color=design.prim_colors_lst[1],
+                size=design.marker_size,
+                symbol=symbols[strategy],
+            ),
+        )
+        fig.add_scatter(
+            x=n,
+            y=2.0 / (mts * gamma),
+            mode="lines",
+            showlegend=False,
+            yaxis="y2",
+            line=dict(color=design.prim_colors_lst[1], width=1.5, dash="dash"),
+        )
+
+    fig.update_layout(
+        title="Landscape Hardness over Spectrum Size",
+        xaxis=dict(title="$|\\Omega|$", type="log"),
         yaxis=dict(
             title="local minima on the path",
             rangemode="tozero",

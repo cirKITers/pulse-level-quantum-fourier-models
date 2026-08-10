@@ -150,6 +150,9 @@ def generate_df(run_ids: List[str]):
         if "model.n_pulse_params" in run.data.params:
             row["model.n_pulse_params"] = int(run.data.params["model.n_pulse_params"])
             row["model.n_gate_params"] = int(run.data.params["model.n_gate_params"]) # change to params
+        if "model.encoding_strategy" in run.data.params:
+            row["model.encoding_strategy"] = run.data.params["model.encoding_strategy"]
+            row["model.n_qubits"] = int(run.data.params["model.n_qubits"])
 
         frequencies = sorted(
             [

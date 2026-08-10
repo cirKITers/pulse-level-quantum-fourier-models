@@ -1,6 +1,7 @@
 from typing import List, Dict, Tuple, Optional
 from rich.progress import track
 import time
+import math
 import jax
 import optax
 
@@ -12,7 +13,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from qml_essentials.model import Model
-from qml_essentials.coefficients import Coefficients, FCC
+from qml_essentials.coefficients import Coefficients, Datasets, FCC
 from qml_essentials.expressibility import Expressibility
 from qml_essentials.math import fidelity, trace_distance, phase_difference
 
@@ -506,6 +507,7 @@ def _encoding_gates(model: Model, feature: int = 0) -> List[Tuple[int, int, floa
         )
 
     mask = np.asarray(model.data_reupload[..., feature], dtype=bool)
+    #TODO: the following should be replacable by some qml-essentials internal tool
     return [(int(l), int(q), float(base**q)) for l, q in zip(*np.nonzero(mask))]
 
 
@@ -686,10 +688,159 @@ def _log_curves(curves: Dict[str, np.ndarray]) -> None:
         client.log_batch(run_id, metrics=metrics[start : start + 1000])
 
 
+def _profile_grid(
+    model: Model,
+    supports: List[np.ndarray],
+    target_frequencies: jnp.ndarray,
+    coefficients: jnp.ndarray,
+    mts: int,
+) -> Tuple[np.ndarray, np.ndarray, int]:
+    """
+    Dense domain grid for the concentrated fit, with the target re-evaluated
+    on it.
+
+    The concentrated fit assigns a free coefficient to every comb component,
+    so it is only meaningful while the domain carries more samples than fit
+    parameters. The training grid guarantees that for the nominal comb, but a
+    detuned multi-layer comb inflates past it: the number of distinct
+    components approaches $3^{n_\\text{gates}}$, and the swept lines exceed
+    the Nyquist frequency of the grid. Both are cured by raising the sample
+    density within the same window, i.e. `mfs`. The window itself, and with it
+    the Dirichlet resolution that shapes the landscape, is set by `mts` and is
+    deliberately left untouched.
+
+    Args:
+        model (Model): The QFM model.
+        supports (List[np.ndarray]): The comb at every point of the sweep.
+        target_frequencies (jnp.ndarray): Target frequencies of shape
+            (n_frequencies, n_input_feat).
+        coefficients (jnp.ndarray): Target coefficients of shape
+            (n_frequencies,).
+        mts (int): Domain oversampling of the dataset, i.e. the window length
+            in periods.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray, int]: Domain samples, target values and
+        the chosen sample density `mfs`.
+    """
+    degree = int(np.prod(model.degree))
+    max_size = max(len(np.unique(np.abs(s[s != 0.0]))) for s in supports)
+    max_frequency = max(float(np.max(np.abs(s))) for s in supports)
+
+    mfs = max(
+        1,
+        math.ceil((2 * max_size + 1) / (mts * degree)),
+        math.ceil(2 * max_frequency / degree),
+    )
+
+    x = Datasets.construct_domain_samples(model, mts=mts, mfs=mfs)
+    y = np.asarray(Datasets.calculate_values(x, target_frequencies, coefficients))
+
+    return np.asarray(x).ravel(), y, mfs
+
+
+def _dirichlet_weight(delta: np.ndarray, mts: int, n_samples: int) -> np.ndarray:
+    """
+    Correlation of two unit sinusoids separated by `delta` over the sample
+    window.
+
+    Closed form of $|\\frac{1}{T} \\sum_t e^{i \\delta x_t}|$ for the uniform
+    grid of $T$ samples covering $mts$ periods, i.e. the Dirichlet kernel with
+    nulls at multiples of $1/mts$. A vanishing denominator means the
+    separation is a multiple of the sampling rate, where the two sinusoids
+    alias onto each other and the correlation returns to one.
+
+    Args:
+        delta (np.ndarray): Frequency separations.
+        mts (int): Window length in periods.
+        n_samples (int): Number of samples $T$ in the window.
+
+    Returns:
+        np.ndarray: Correlation magnitudes in $[0, 1]$.
+    """
+    numerator = np.sin(np.pi * mts * delta)
+    denominator = n_samples * np.sin(np.pi * mts * delta / n_samples)
+    aliased = np.abs(denominator) < 1e-12
+
+    return np.where(
+        aliased, 1.0, np.abs(numerator) / np.where(aliased, 1.0, np.abs(denominator))
+    )
+
+
+def _analytic_mse(
+    supports: List[np.ndarray],
+    omegas: np.ndarray,
+    powers: np.ndarray,
+    mts: int,
+    n_samples: int,
+) -> np.ndarray:
+    """
+    Closed-form approximation of the concentrated loss over the sweep.
+
+    Treats every target component independently: a component of power $p$ at
+    distance $\\delta$ from the nearest comb line retains the energy
+    $p \\, (1 - |D(\\delta)|^2)$ in the residual, with $D$ the Dirichlet
+    kernel of the sample window. Summing over components gives the classical
+    multi-tone estimation cost, which matches the concentrated loss while the
+    components stay separated by more than a kernel lobe and shares its
+    geometry everywhere: oscillation period $1/(mts \\, \\gamma)$ along the
+    scaler of a gate driving the generator $\\gamma$, main lobe of width
+    $2/(mts \\, \\gamma)$ around the aligned scaler.
+
+    Args:
+        supports (List[np.ndarray]): The comb at every point of the sweep.
+        omegas (np.ndarray): Target frequencies, duplicates merged.
+        powers (np.ndarray): Power of each target component.
+        mts (int): Window length in periods.
+        n_samples (int): Number of samples in the window.
+
+    Returns:
+        np.ndarray: Approximate loss per sweep point.
+    """
+    values = np.empty(len(supports))
+    for i, support in enumerate(supports):
+        delta = np.min(np.abs(omegas[:, None] - support[None, :]), axis=1)
+        weight = _dirichlet_weight(delta, mts, n_samples)
+        values[i] = np.sum(powers * (1.0 - weight**2))
+
+    return values
+
+
+def _target_components(
+    target_frequencies: jnp.ndarray, coefficients: jnp.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Target frequencies and their powers, with duplicated components merged.
+
+    The generator off-grid mode can displace two model frequencies onto the
+    same target component, whose coefficients then add coherently. Powers
+    follow the normalization of `Datasets.calculate_values`.
+
+    Args:
+        target_frequencies (jnp.ndarray): Target frequencies of shape
+            (n_frequencies, n_input_feat).
+        coefficients (jnp.ndarray): Target coefficients of shape
+            (n_frequencies,).
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: Distinct frequencies and their powers.
+    """
+    raw = np.round(np.asarray(target_frequencies).ravel(), 9)
+    c = np.asarray(coefficients).ravel()
+
+    omegas, inverse = np.unique(raw, return_inverse=True)
+    merged = np.zeros(len(omegas), dtype=complex)
+    np.add.at(merged, inverse, c)
+
+    return omegas, np.abs(merged) ** 2 / c.size**2
+
+
 def sweep_loss_landscape(
     model: Model,
     train_loader: DataLoader,
     target_etas: Optional[jnp.ndarray],
+    coefficients: jnp.ndarray,
+    target_frequencies: jnp.ndarray,
     mts: int,
     eta_min: float,
     eta_max: float,
@@ -707,20 +858,27 @@ def sweep_loss_landscape(
     minimum on every sidelobe and shrinks the basin around the aligned scaler
     in proportion to the generator. Sweeping one gate at a time therefore
     resolves the landscape per spectral component, which is what the per-gate
-    curves report.
+    curves report. Since the largest generator grows with the size of the
+    frequency spectrum for the binary and ternary strategies, and stays at one
+    for hamming, the per-gate hardness ties directly to the number of
+    frequencies the encoding provides.
 
-    The gates are the data re-upload instances, so a model with several layers
-    contributes one curve per layer and qubit, and two gates that drive the same
-    generator get one curve each. Which generator a gate carries follows from
-    the encoding strategy, see :func:`_encoding_gates`.
-
-    Two curves are logged per gate:
+    Three curves are logged per gate:
 
     - `profile`, the loss with the coefficients concentrated out, see
       :func:`_profile_mse`. This is the landscape of the frequencies alone and
-      reaches zero wherever the comb covers the target support.
-    - `fixed`, the loss at the current variational parameters, i.e. the slice
-      the optimizer sees before its coefficients adapt.
+      reaches zero wherever the comb covers the target support. It is
+      evaluated on a sample grid dense enough for the detuned comb, see
+      :func:`_profile_grid`. Gates that share a generator across layers make
+      the detuned comb locally denser than the window resolution, and a
+      cluster of sub-resolution lines spans every nearby sinusoid on the
+      finite window. The concentrated fit then tracks the target along most
+      of such a gate's slice, so for multi-layer models the alignment
+      structure is carried by `analytic` and `fixed` instead.
+    - `analytic`, the closed-form Dirichlet approximation of `profile`, see
+      :func:`_analytic_mse`.
+    - `fixed`, the loss at the current variational parameters on the training
+      grid, i.e. the slice the optimizer sees before its coefficients adapt.
 
     The remaining gates are held at their target scalers, so each slice contains
     the aligned configuration and the path from the initial scaler $\\eta = 1$
@@ -733,6 +891,8 @@ def sweep_loss_landscape(
             target series.
         target_etas (Optional[jnp.ndarray]): The scalers that align the comb
             with the target, produced by `offgrid_mode="generator"`.
+        coefficients (jnp.ndarray): Coefficients of the target series.
+        target_frequencies (jnp.ndarray): Frequencies of the target series.
         mts (int): Domain oversampling of the dataset, which sets the
             oscillation period along the scaler axis.
         eta_min, eta_max (float): Bounds of the scaler axis.
@@ -751,7 +911,6 @@ def sweep_loss_landscape(
         )
 
     domain = train_loader.dataset.tensors[0].numpy()
-    x = np.asarray(domain).ravel()
     y = train_loader.dataset.tensors[1].numpy()
 
     gates = _encoding_gates(model)
@@ -761,11 +920,13 @@ def sweep_loss_landscape(
     slot = int(model._enc_pulse_offsets[0])
     frozen = np.asarray(target_etas)[0]
     aligned = np.array([frozen[layer, qubit] for layer, qubit, _ in gates])
+    omegas, powers = _target_components(target_frequencies, coefficients)
 
     log.info(f"Encoding gates (layer, qubit, generator): {gates}")
     log.info(f"Target etas: {aligned.tolist()}")
     mlflow.log_param("landscape.mts", mts)
     mlflow.log_param("landscape.n_gates", len(gates))
+    mlflow.log_param("landscape.n_frequencies", len(model.frequencies[0]))
     for layer, qubit, generator in gates:
         mlflow.log_param(f"landscape.generator.l{layer}.q{qubit}", generator)
         mlflow.log_param(
@@ -776,25 +937,31 @@ def sweep_loss_landscape(
 
     for j, (layer, qubit, generator) in enumerate(gates):
         grid = _sweep_grid(eta_min, eta_max, points_per_period, mts, generator)
-        log.info(
-            f"Gate {j} (layer {layer}, qubit {qubit}): {len(grid)} scalers on "
-            f"generator {generator}"
-        )
 
         etas = np.tile(aligned, (len(grid), 1))
         etas[:, j] = grid
+        supports = [_comb_support(generators, eta) for eta in etas]
+
+        x_dense, y_dense, mfs = _profile_grid(
+            model, supports, target_frequencies, coefficients, mts
+        )
+        log.info(
+            f"Gate {j} (layer {layer}, qubit {qubit}): {len(grid)} scalers on "
+            f"generator {generator}, profile mfs={mfs} ({len(x_dense)} samples)"
+        )
+        mlflow.log_param(f"landscape.profile_mfs.l{layer}.q{qubit}", mfs)
 
         profile = np.array(
-            [_profile_mse(x, y, _comb_support(generators, eta)) for eta in etas]
+            [_profile_mse(x_dense, y_dense, support) for support in supports]
         )
-        fixed = _pulse_sweep(
-            model, domain, y, layer, qubit, slot, grid, frozen, chunk
-        )
+        analytic = _analytic_mse(supports, omegas, powers, mts, len(x_dense))
+        fixed = _pulse_sweep(model, domain, y, layer, qubit, slot, grid, frozen, chunk)
 
         _log_curves(
             {
                 f"landscape.eta.l{layer}.q{qubit}": grid,
                 f"landscape.profile.l{layer}.q{qubit}": profile,
+                f"landscape.analytic.l{layer}.q{qubit}": analytic,
                 f"landscape.fixed.l{layer}.q{qubit}": fixed,
             }
         )

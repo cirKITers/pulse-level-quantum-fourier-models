@@ -70,6 +70,8 @@ def create_landscape_pipeline(**kwargs) -> Pipeline:
                     "model": "model",
                     "train_loader": "train_loader",
                     "target_etas": "target_etas",
+                    "coefficients": "coefficients",
+                    "target_frequencies": "target_frequencies",
                     "mts": "params:data.mts",
                     "eta_min": "params:landscape.eta_min",
                     "eta_max": "params:landscape.eta_max",
