@@ -274,7 +274,7 @@ def landscape_over_eta(df: pd.DataFrame, curve: str):
     # the concentrated loss reaches machine zero where the comb covers the
     # target, which a log axis cannot show. Values below this floor are drawn
     # at the floor.
-    floor = 1e-10
+    floor = 1e-9
 
     row = _landscape_row(df)
     gates = _landscape_gates(row)
@@ -347,12 +347,15 @@ def landscape_over_eta(df: pd.DataFrame, curve: str):
 
 
 def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
-    """Basin width around the aligned scaler and local minima on the way to it.
+    """Basin width around the aligned scaler and density of local minima on the
+    way to it.
 
     The basin is the span between the two local maxima flanking the minimum at
-    `target`, i.e. the main lobe of the loss. The count is the number of local
-    minima strictly between the initial scaler $\\eta = 1$ and `target`, which
-    is how many times a descent from the initial scaler can stall.
+    `target`, i.e. the main lobe of the loss. The density is the number of
+    local minima strictly between the initial scaler $\\eta = 1$ and `target`
+    per unit of scaler travelled, which is how often a descent from the initial
+    scaler can stall. Dividing by the path length removes the random draw of
+    the target scaler, leaving a quantity that depends on the generator alone.
 
     Args:
         grid (np.ndarray): The scaler grid.
@@ -360,7 +363,7 @@ def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
         target (float): The aligned scaler.
 
     Returns:
-        tuple[float, int]: Basin width and local minima count.
+        tuple[float, float]: Basin width and local minima per unit scaler.
     """
     center = int(np.argmin(np.abs(grid - target)))
     maxima = argrelmax(values)[0]
@@ -370,9 +373,10 @@ def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
     width = grid[right[0]] - grid[left[-1]] if len(left) and len(right) else np.nan
 
     inside = (grid >= min(1.0, target)) & (grid <= max(1.0, target))
-    count = len(argrelmin(values[inside])[0])
+    distance = abs(target - 1.0)
+    density = len(argrelmin(values[inside])[0]) / distance if distance else np.nan
 
-    return float(width), count
+    return float(width), float(density)
 
 
 def landscape_scaling(df: pd.DataFrame):
@@ -383,12 +387,14 @@ def landscape_scaling(df: pd.DataFrame):
     Both follow from the Dirichlet kernel of the sample window: the loss
     oscillates with period $1/(mts \\cdot \\gamma)$ along the scaler of a gate
     driving the generator $\\gamma$, so the main lobe spans
-    $2/(mts \\cdot \\gamma)$ and a path of length $|\\eta^* - 1|$ covers
-    $mts \\cdot \\gamma \\, |\\eta^* - 1|$ oscillations. The measured values are
-    read off the concentrated loss. The basin reference is exact, the minima
-    reference is the number of oscillations on the path, which bounds the
-    strict local minima from above because the lobes next to the main one merge
-    into it.
+    $2/(mts \\cdot \\gamma)$ and the path from the initial to the aligned
+    scaler crosses $mts \\cdot \\gamma$ oscillations per unit of scaler
+    travelled. The measured values are read off the concentrated loss.
+    Dividing the minima count by the path length removes the random draw of
+    the target scaler, so both references depend on the generator alone. The
+    basin reference is the sharper of the two: counting strict local minima
+    over a path only a few oscillations long is a coarse statistic, and the
+    superposition over target components merges part of the lobes.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
@@ -400,37 +406,36 @@ def landscape_scaling(df: pd.DataFrame):
     row = _landscape_row(df)
     mts = row["landscape.mts"]
 
-    generators, widths, counts, distances = [], [], [], []
+    generators, widths, densities = [], [], []
     for key in _landscape_gates(row):
         grid = np.array(row[f"landscape.eta.{key}.values"])
         values = np.array(row[f"landscape.profile.{key}.values"])
         target = row[f"landscape.target_eta.{key}"]
 
-        width, count = _basin_and_minima(grid, values, target)
+        width, density = _basin_and_minima(grid, values, target)
         generators.append(row[f"landscape.generator.{key}"])
         widths.append(width)
-        counts.append(count)
-        distances.append(abs(target - 1.0))
+        densities.append(density)
 
     generators = np.array(generators)
     order = np.argsort(generators)
 
-    # the counts reach zero where the aligned scaler still sits inside the
+    # the densities reach zero where the aligned scaler still sits inside the
     # initial basin, so they get a linear axis of their own while the basin
     # widths keep the log axis their power law needs
     fig = go.Figure()
     fig.add_scatter(
         x=generators,
-        y=counts,
+        y=densities,
         mode="markers",
         name="local minima",
         marker=dict(color=design.prim_colors_lst[0], size=design.marker_size),
     )
     fig.add_scatter(
         x=generators[order],
-        y=(mts * generators * np.array(distances))[order],
+        y=(mts * generators)[order],
         mode="lines",
-        name="$mts \\cdot \\gamma \\cdot |\\eta^* - 1|$",
+        name="$mts \\cdot \\gamma$",
         line=dict(color=design.prim_colors_lst[0], width=1.5, dash="dash"),
     )
     fig.add_scatter(
@@ -459,7 +464,7 @@ def landscape_scaling(df: pd.DataFrame):
             tickvals=np.unique(generators),
         ),
         yaxis=dict(
-            title="local minima on the path",
+            title="minima per unit scaler",
             rangemode="tozero",
             color=design.prim_colors_lst[0],
         ),
@@ -515,21 +520,24 @@ def _strategy_generator_max(strategy: str, n_frequencies: float) -> float:
 
 def landscape_scaling_frequencies(df: pd.DataFrame):
     """
-    Plot the hardness of the hardest encoding scaler against the number of
+    Plot the hardness of the highest encoding generator against the number of
     frequencies of the model, one point per run, one trace per encoding
     strategy.
 
-    Hardness is read off the concentrated loss of the gate with the largest
-    generator $\\gamma_{max}$: the number of local minima between the initial
-    and the aligned scaler, and the width of the basin around the aligned one.
-    The Dirichlet geometry gives both in closed form,
-    $N = mts \\cdot \\gamma_{max} \\cdot |\\eta^* - 1|$ and
-    $W = 2 / (mts \\cdot \\gamma_{max})$, and the encoding strategy ties
+    Hardness is read off the concentrated loss of the gates driving the largest
+    generator $\\gamma_{max}$, averaged over them when several do: the width of
+    the basin around the aligned scaler and the number of local minima per unit
+    of scaler travelled towards it. The Dirichlet geometry gives both in closed
+    form, $W = 2 / (mts \\cdot \\gamma_{max})$ and
+    $\\nu = mts \\cdot \\gamma_{max}$, and the encoding strategy ties
     $\\gamma_{max}$ to the spectrum size $|\\Omega|$: $|\\Omega| / 3$ for
-    ternary, $(|\\Omega| + 1) / 4$ for binary and $1$ for hamming. The
-    reference lines are these expressions with the mean $|\\eta^* - 1|$ of the
-    strategy, so the exponential encodings show hardness growing linearly with
-    the spectrum while hamming stays flat.
+    ternary, $(|\\Omega| + 1) / 4$ for binary and $1$ for hamming. Hardness
+    therefore grows linearly with the spectrum for the exponential encodings
+    and stays flat for hamming, which is the control.
+
+    The basin is the sharper of the two measurements. The minima density counts
+    strict local minima over a path only a few oscillations long, so it carries
+    visibly more scatter.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
@@ -541,25 +549,28 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
     """
     points = {}
     for row in _landscape_rows(df):
-        # the generator inversion above only holds for a single layer, so
+        # the generator inversion below only holds for a single layer, so
         # multi-layer runs in the same experiment are left out
         if row["landscape.n_gates"] != row["model.n_qubits"]:
             continue
-        strategy = row["model.encoding_strategy"]
-        key = max(_landscape_gates(row), key=lambda k: row[f"landscape.generator.{k}"])
 
-        grid = np.array(row[f"landscape.eta.{key}.values"])
-        values = np.array(row[f"landscape.profile.{key}.values"])
-        target = row[f"landscape.target_eta.{key}"]
-        width, count = _basin_and_minima(grid, values, target)
+        keys = _landscape_gates(row)
+        generator = max(row[f"landscape.generator.{k}"] for k in keys)
+        measured = [
+            _basin_and_minima(
+                np.array(row[f"landscape.eta.{k}.values"]),
+                np.array(row[f"landscape.profile.{k}.values"]),
+                row[f"landscape.target_eta.{k}"],
+            )
+            for k in keys
+            if row[f"landscape.generator.{k}"] == generator
+        ]
 
-        points.setdefault(strategy, []).append(
+        points.setdefault(row["model.encoding_strategy"], []).append(
             {
                 "n_frequencies": row["landscape.n_frequencies"],
-                "gamma": row[f"landscape.generator.{key}"],
-                "count": count,
-                "width": width,
-                "distance": abs(target - 1.0),
+                "width": np.nanmean([w for w, _ in measured]),
+                "density": np.nanmean([d for _, d in measured]),
                 "mts": row["landscape.mts"],
             }
         )
@@ -571,33 +582,13 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
         entries = sorted(entries, key=lambda e: e["n_frequencies"])
         n = np.array([e["n_frequencies"] for e in entries])
         mts = entries[0]["mts"]
-        distance = np.mean([e["distance"] for e in entries])
         gamma = np.array([_strategy_generator_max(strategy, v) for v in n])
 
-        fig.add_scatter(
-            x=n,
-            y=[e["count"] for e in entries],
-            mode="markers",
-            name=f"minima ({strategy})",
-            marker=dict(
-                color=design.prim_colors_lst[0],
-                size=design.marker_size,
-                symbol=symbols[strategy],
-            ),
-        )
-        fig.add_scatter(
-            x=n,
-            y=mts * gamma * distance,
-            mode="lines",
-            showlegend=False,
-            line=dict(color=design.prim_colors_lst[0], width=1.5, dash="dash"),
-        )
         fig.add_scatter(
             x=n,
             y=[e["width"] for e in entries],
             mode="markers",
             name=f"basin ({strategy})",
-            yaxis="y2",
             marker=dict(
                 color=design.prim_colors_lst[1],
                 size=design.marker_size,
@@ -609,24 +600,41 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
             y=2.0 / (mts * gamma),
             mode="lines",
             showlegend=False,
-            yaxis="y2",
             line=dict(color=design.prim_colors_lst[1], width=1.5, dash="dash"),
+        )
+        fig.add_scatter(
+            x=n,
+            y=[e["density"] for e in entries],
+            mode="markers",
+            name=f"minima ({strategy})",
+            yaxis="y2",
+            marker=dict(
+                color=design.prim_colors_lst[0],
+                size=design.marker_size,
+                symbol=symbols[strategy],
+            ),
+        )
+        fig.add_scatter(
+            x=n,
+            y=mts * gamma,
+            mode="lines",
+            showlegend=False,
+            yaxis="y2",
+            line=dict(color=design.prim_colors_lst[0], width=1.5, dash="dash"),
         )
 
     fig.update_layout(
         title="Landscape Hardness over Spectrum Size",
         xaxis=dict(title="$|\\Omega|$", type="log"),
         yaxis=dict(
-            title="local minima on the path",
-            rangemode="tozero",
-            color=design.prim_colors_lst[0],
+            title="basin width", type="log", color=design.prim_colors_lst[1]
         ),
         yaxis2=dict(
-            title="basin width",
+            title="minima per unit scaler",
             type="log",
             overlaying="y",
             side="right",
-            color=design.prim_colors_lst[1],
+            color=design.prim_colors_lst[0],
         ),
         template=design.template,
         font=dict(size=design.font_size),
