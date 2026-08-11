@@ -385,30 +385,6 @@ def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
     return float(width), float(density)
 
 
-def _minima_spacing(grid: np.ndarray, values: np.ndarray) -> float:
-    """Median spacing of the local minima of a sweep curve.
-
-    The Dirichlet geometry predicts a spacing of $1/(mts \\cdot \\gamma)$ along
-    the scaler of a gate driving the generator $\\gamma$. Taking the median over
-    the whole sweep rather than counting minima on the path to the aligned
-    scaler averages over many oscillations, which makes this the most robust of
-    the three measurements: the depth of an individual lobe depends on the
-    variational parameters, its position does not.
-
-    Args:
-        grid (np.ndarray): The scaler grid.
-        values (np.ndarray): Loss over the grid.
-
-    Returns:
-        float: Median spacing, or NaN with fewer than two minima.
-    """
-    minima = argrelmin(values)[0]
-    if len(minima) < 2:
-        return np.nan
-
-    return float(np.median(np.diff(grid[minima])))
-
-
 def landscape_scaling(df: pd.DataFrame):
     """
     Plot the basin width and the density of local minima against the generator
@@ -687,94 +663,118 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
 
 def landscape_over_circuits(df: pd.DataFrame):
     """
-    Plot the oscillation period of the fixed-parameter loss against the
-    generator the swept gate drives, one trace per ansatz, normalised by the
-    Dirichlet prediction.
+    Plot the basin width of the fixed-parameter loss for each ansatz, over the
+    runs of the most frequent encoding, normalised by the Dirichlet prediction.
 
-    The concentrated loss is independent of the ansatz by construction: it
-    depends on the comb and the target only, so its curves are bitwise
-    identical across circuits and carry no information here. The fixed-
-    parameter loss is the slice that does see the trainable unitary, through
-    the coefficients, and this figure asks whether the ansatz changes the scale
-    of the landscape or only the depth of its lobes.
+    The concentrated loss depends on the comb and the target only, so its
+    curves are bitwise identical across ansätze and cannot answer this
+    question. The fixed-parameter loss is the slice that does see the trainable
+    unitary, through the coefficients, and the basin is the feature the
+    Dirichlet geometry pins down: $2/(mts \\cdot \\gamma)$, set by the
+    encoding generator alone. Normalising by it makes the gates of one run
+    comparable, so all of them are pooled.
 
-    Two rates are present. The cross term between model and target oscillates
-    with period $1/(mts \\cdot \\gamma)$, while the model self-overlap adds
-    crossings between two moving comb lines, which approach at twice the rate
-    and contribute at $1/(2 \\, mts \\cdot \\gamma)$. The measured period is
-    therefore expected between the two references drawn here, with the faster
-    rate taking over as the generator grows. What matters for the argument is
-    that both bounds are set by the encoding alone: across ansätze the markers
-    stay inside a band of order unity, while the period itself spans the full
-    range of generators.
+    The shaded band is the global mean plus and minus the spread of the seeds
+    within one ansatz, i.e. the noise floor of the measurement. Ansatz means
+    that sit inside it are not distinguishable from re-drawing the seed with
+    the same ansatz, which is the sense in which the geometry does not depend
+    on the circuit.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
             columns produced by ``generate_df``.
 
     Returns:
-        go.Figure: A figure showing the normalised period over the generator.
+        go.Figure: A figure showing the normalised basin width per ansatz.
     """
-    points = {}
-    for row in _landscape_rows(df):
+    rows = _landscape_rows(df)
+
+    # the gates of one run are made comparable by the normalisation, but a
+    # different encoding changes which generators exist at all, so the figure
+    # sticks to the configuration most runs share
+    configs = [(row["model.encoding_strategy"], row["model.n_qubits"]) for row in rows]
+    config = max(set(configs), key=configs.count)
+
+    by_ansatz, by_seed = {}, {}
+    for row, entry in zip(rows, configs):
+        if entry != config:
+            continue
         mts = row["landscape.mts"]
         for key in _landscape_gates(row):
             generator = row[f"landscape.generator.{key}"]
-            period = _minima_spacing(
+            width, _ = _basin_and_minima(
                 np.array(row[f"landscape.eta.{key}.values"]),
                 np.array(row[f"landscape.fixed.{key}.values"]),
+                row[f"landscape.target_eta.{key}"],
             )
-            if np.isnan(period):
-                continue
-            points.setdefault(row["ansatz"], []).append(
-                (generator, period * mts * generator)
-            )
+            ratio = width / (2.0 / (mts * generator))
+            by_ansatz.setdefault(row["ansatz"], []).append(ratio)
+            by_seed.setdefault((row["ansatz"], generator), []).append(ratio)
+
+    ansatzes = sort_ansatzes(by_ansatz)
+    labels = [circuit_name_to_str(a) for a in ansatzes]
+    means = [np.nanmean(by_ansatz[a]) for a in ansatzes]
+    overall = np.nanmean([v for values in by_ansatz.values() for v in values])
+    # spread of the seeds at a fixed ansatz and generator, i.e. what the same
+    # circuit gives when only the draw changes
+    noise = np.nanmean(
+        [np.nanstd(v) for v in by_seed.values() if len(v) > 1 and not np.all(np.isnan(v))]
+    )
 
     fig = go.Figure()
-    color_it = iter(design.prim_colors_lst * 4)
-    symbol_it = iter(design.symbols_lst * 4)
+    fig.add_hrect(
+        y0=overall - noise,
+        y1=overall + noise,
+        fillcolor=design.prim_colors_lst[1],
+        opacity=0.15,
+        line_width=0,
+    )
+    fig.add_hline(
+        y=overall, line=dict(color=design.prim_colors_lst[1], width=1.5, dash="dash")
+    )
 
-    for ansatz in sort_ansatzes(points):
-        entries = points[ansatz]
+    for it, ansatz in enumerate(ansatzes):
         fig.add_scatter(
-            x=[g for g, _ in entries],
-            y=[r for _, r in entries],
+            x=[labels[it]] * len(by_ansatz[ansatz]),
+            y=by_ansatz[ansatz],
             mode="markers",
-            name=circuit_name_to_str(ansatz),
+            showlegend=False,
             marker=dict(
-                color=next(color_it),
-                size=design.marker_size * 0.6,
-                symbol=next(symbol_it),
-                opacity=0.8,
+                color=design.prim_colors_lst[0],
+                size=design.marker_size * 0.4,
+                opacity=0.45,
             ),
         )
 
-    fig.add_hline(
-        y=1.0,
-        line=dict(color=design.legend_color, width=1.5, dash="dash"),
-        annotation_text="cross term",
-        annotation_position="top left",
+    fig.add_scatter(
+        x=labels,
+        y=means,
+        mode="markers",
+        name="ansatz mean",
+        marker=dict(
+            color=design.prim_colors_lst[0],
+            size=design.marker_size,
+            symbol="diamond",
+        ),
     )
-    fig.add_hline(
-        y=0.5,
-        line=dict(color=design.legend_color, width=1.5, dash="dot"),
-        annotation_text="self term",
-        annotation_position="bottom left",
+    fig.add_scatter(
+        x=[None],
+        y=[None],
+        mode="lines",
+        name="all ansätze, seed spread",
+        line=dict(color=design.prim_colors_lst[1], width=1.5, dash="dash"),
     )
 
     fig.update_layout(
-        title="Oscillation Period over Encoding Generator",
-        xaxis=dict(
-            title="$\\gamma$",
-            type="log",
-            tickmode="array",
-            tickvals=sorted({g for e in points.values() for g, _ in e}),
-        ),
-        yaxis=dict(title="measured period / prediction", rangemode="tozero"),
+        title=f"Basin Width over Ansatz ({config[0]}, {config[1]:.0f} qubits)",
+        xaxis=dict(tickangle=-60),
+        yaxis=dict(title="basin width / prediction", rangemode="tozero"),
         template=design.template,
         font=dict(size=design.font_size),
-        legend=design.horizontal_legend(),
-        margin=dict(b=200),
+        legend=dict(
+            orientation="h", yanchor="top", y=-0.45, xanchor="center", x=0.5
+        ),
+        margin=dict(b=240),
     )
 
     return fig
