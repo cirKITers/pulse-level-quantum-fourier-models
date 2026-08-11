@@ -195,6 +195,7 @@ def viz_study_6(df):
     figures.append(landscape_over_eta(df, "fixed"))
     figures.append(landscape_scaling(df))
     figures.append(landscape_scaling_frequencies(df))
+    figures.append(landscape_over_circuits(df))
 
     return figures
 
@@ -223,10 +224,15 @@ def _landscape_gates(row: pd.Series) -> List[str]:
     Ordered by the generator the gate drives, so the panels of a figure run
     from the lowest spectral component to the highest.
     """
+    # once runs of different sizes share a DataFrame, every row carries the
+    # columns of the widest one, so the gates of this run are the ones whose
+    # sweep actually holds values
     keys = [
         c[len("landscape.eta.") : -len(".values")]
         for c in row.index
-        if c.startswith("landscape.eta.") and c.endswith(".values")
+        if c.startswith("landscape.eta.")
+        and c.endswith(".values")
+        and isinstance(row[c], (list, tuple, np.ndarray))
     ]
 
     return sorted(keys, key=lambda k: (row[f"landscape.generator.{k}"], k))
@@ -379,20 +385,45 @@ def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
     return float(width), float(density)
 
 
+def _minima_spacing(grid: np.ndarray, values: np.ndarray) -> float:
+    """Median spacing of the local minima of a sweep curve.
+
+    The Dirichlet geometry predicts a spacing of $1/(mts \\cdot \\gamma)$ along
+    the scaler of a gate driving the generator $\\gamma$. Taking the median over
+    the whole sweep rather than counting minima on the path to the aligned
+    scaler averages over many oscillations, which makes this the most robust of
+    the three measurements: the depth of an individual lobe depends on the
+    variational parameters, its position does not.
+
+    Args:
+        grid (np.ndarray): The scaler grid.
+        values (np.ndarray): Loss over the grid.
+
+    Returns:
+        float: Median spacing, or NaN with fewer than two minima.
+    """
+    minima = argrelmin(values)[0]
+    if len(minima) < 2:
+        return np.nan
+
+    return float(np.median(np.diff(grid[minima])))
+
+
 def landscape_scaling(df: pd.DataFrame):
     """
-    Plot the basin width and the number of local minima against the generator
-    the swept gate drives.
+    Plot the basin width and the density of local minima against the generator
+    the swept gate drives, one marker per gate and run.
 
     Both follow from the Dirichlet kernel of the sample window: the loss
     oscillates with period $1/(mts \\cdot \\gamma)$ along the scaler of a gate
     driving the generator $\\gamma$, so the main lobe spans
     $2/(mts \\cdot \\gamma)$ and the path from the initial to the aligned
     scaler crosses $mts \\cdot \\gamma$ oscillations per unit of scaler
-    travelled. The measured values are read off the concentrated loss.
-    Dividing the minima count by the path length removes the random draw of
-    the target scaler, so both references depend on the generator alone. The
-    basin reference is the sharper of the two: counting strict local minima
+    travelled. The measured values are read off the concentrated loss, which
+    depends on the encoding and the target only, so the spread across markers
+    at one generator reflects the target draw rather than the ansatz.
+
+    The basin reference is the sharper of the two: counting strict local minima
     over a path only a few oscillations long is a coarse statistic, and the
     superposition over target components merges part of the lobes.
 
@@ -403,22 +434,22 @@ def landscape_scaling(df: pd.DataFrame):
     Returns:
         go.Figure: A figure showing both quantities over the generator.
     """
-    row = _landscape_row(df)
-    mts = row["landscape.mts"]
-
+    mts = None
     generators, widths, densities = [], [], []
-    for key in _landscape_gates(row):
-        grid = np.array(row[f"landscape.eta.{key}.values"])
-        values = np.array(row[f"landscape.profile.{key}.values"])
-        target = row[f"landscape.target_eta.{key}"]
-
-        width, density = _basin_and_minima(grid, values, target)
-        generators.append(row[f"landscape.generator.{key}"])
-        widths.append(width)
-        densities.append(density)
+    for row in _landscape_rows(df):
+        mts = row["landscape.mts"]
+        for key in _landscape_gates(row):
+            width, density = _basin_and_minima(
+                np.array(row[f"landscape.eta.{key}.values"]),
+                np.array(row[f"landscape.profile.{key}.values"]),
+                row[f"landscape.target_eta.{key}"],
+            )
+            generators.append(row[f"landscape.generator.{key}"])
+            widths.append(width)
+            densities.append(density)
 
     generators = np.array(generators)
-    order = np.argsort(generators)
+    reference = np.unique(generators)
 
     # the densities reach zero where the aligned scaler still sits inside the
     # initial basin, so they get a linear axis of their own while the basin
@@ -432,8 +463,8 @@ def landscape_scaling(df: pd.DataFrame):
         marker=dict(color=design.prim_colors_lst[0], size=design.marker_size),
     )
     fig.add_scatter(
-        x=generators[order],
-        y=(mts * generators)[order],
+        x=reference,
+        y=mts * reference,
         mode="lines",
         name="$mts \\cdot \\gamma$",
         line=dict(color=design.prim_colors_lst[0], width=1.5, dash="dash"),
@@ -447,8 +478,8 @@ def landscape_scaling(df: pd.DataFrame):
         marker=dict(color=design.prim_colors_lst[1], size=design.marker_size),
     )
     fig.add_scatter(
-        x=generators[order],
-        y=2.0 / (mts * generators[order]),
+        x=reference,
+        y=2.0 / (mts * reference),
         mode="lines",
         name="$2 / (mts \\cdot \\gamma)$",
         yaxis="y2",
@@ -461,7 +492,7 @@ def landscape_scaling(df: pd.DataFrame):
             title="$\\gamma$",
             type="log",
             tickmode="array",
-            tickvals=np.unique(generators),
+            tickvals=reference,
         ),
         yaxis=dict(
             title="minima per unit scaler",
@@ -482,7 +513,6 @@ def landscape_scaling(df: pd.DataFrame):
     )
 
     return fig
-
 
 
 def _landscape_rows(df: pd.DataFrame) -> List[pd.Series]:
@@ -525,7 +555,9 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
     strategy.
 
     Hardness is read off the concentrated loss of the gates driving the largest
-    generator $\\gamma_{max}$, averaged over them when several do: the width of
+    generator $\\gamma_{max}$, averaged over them when several do, and over the
+    runs that share a spectrum size, whose spread is shown as an error bar: the
+    width of
     the basin around the aligned scaler and the number of local minima per unit
     of scaler travelled towards it. The Dirichlet geometry gives both in closed
     form, $W = 2 / (mts \\cdot \\gamma_{max})$ and
@@ -579,14 +611,21 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
     symbols = dict(zip(sorted(points), design.symbols_lst))
 
     for strategy, entries in sorted(points.items()):
-        entries = sorted(entries, key=lambda e: e["n_frequencies"])
-        n = np.array([e["n_frequencies"] for e in entries])
+        # several runs share a spectrum size once seeds are swept, so they are
+        # averaged and their spread reported as an error bar
+        n = np.array(sorted({e["n_frequencies"] for e in entries}))
         mts = entries[0]["mts"]
         gamma = np.array([_strategy_generator_max(strategy, v) for v in n])
+        grouped = [[e for e in entries if e["n_frequencies"] == v] for v in n]
+        width = np.array([np.nanmean([e["width"] for e in g]) for g in grouped])
+        width_sd = np.array([np.nanstd([e["width"] for e in g]) for g in grouped])
+        density = np.array([np.nanmean([e["density"] for e in g]) for g in grouped])
+        density_sd = np.array([np.nanstd([e["density"] for e in g]) for g in grouped])
 
         fig.add_scatter(
             x=n,
-            y=[e["width"] for e in entries],
+            y=width,
+            error_y=dict(type="data", array=width_sd, visible=True),
             mode="markers",
             name=f"basin ({strategy})",
             marker=dict(
@@ -604,7 +643,8 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
         )
         fig.add_scatter(
             x=n,
-            y=[e["density"] for e in entries],
+            y=density,
+            error_y=dict(type="data", array=density_sd, visible=True),
             mode="markers",
             name=f"minima ({strategy})",
             yaxis="y2",
@@ -640,6 +680,101 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
         font=dict(size=design.font_size),
         legend=design.horizontal_legend(),
         margin=dict(b=160),
+    )
+
+    return fig
+
+
+def landscape_over_circuits(df: pd.DataFrame):
+    """
+    Plot the oscillation period of the fixed-parameter loss against the
+    generator the swept gate drives, one trace per ansatz, normalised by the
+    Dirichlet prediction.
+
+    The concentrated loss is independent of the ansatz by construction: it
+    depends on the comb and the target only, so its curves are bitwise
+    identical across circuits and carry no information here. The fixed-
+    parameter loss is the slice that does see the trainable unitary, through
+    the coefficients, and this figure asks whether the ansatz changes the scale
+    of the landscape or only the depth of its lobes.
+
+    Two rates are present. The cross term between model and target oscillates
+    with period $1/(mts \\cdot \\gamma)$, while the model self-overlap adds
+    crossings between two moving comb lines, which approach at twice the rate
+    and contribute at $1/(2 \\, mts \\cdot \\gamma)$. The measured period is
+    therefore expected between the two references drawn here, with the faster
+    rate taking over as the generator grows. What matters for the argument is
+    that both bounds are set by the encoding alone: across ansätze the markers
+    stay inside a band of order unity, while the period itself spans the full
+    range of generators.
+
+    Args:
+        df (pd.DataFrame): DataFrame carrying the list-valued landscape
+            columns produced by ``generate_df``.
+
+    Returns:
+        go.Figure: A figure showing the normalised period over the generator.
+    """
+    points = {}
+    for row in _landscape_rows(df):
+        mts = row["landscape.mts"]
+        for key in _landscape_gates(row):
+            generator = row[f"landscape.generator.{key}"]
+            period = _minima_spacing(
+                np.array(row[f"landscape.eta.{key}.values"]),
+                np.array(row[f"landscape.fixed.{key}.values"]),
+            )
+            if np.isnan(period):
+                continue
+            points.setdefault(row["ansatz"], []).append(
+                (generator, period * mts * generator)
+            )
+
+    fig = go.Figure()
+    color_it = iter(design.prim_colors_lst * 4)
+    symbol_it = iter(design.symbols_lst * 4)
+
+    for ansatz in sort_ansatzes(points):
+        entries = points[ansatz]
+        fig.add_scatter(
+            x=[g for g, _ in entries],
+            y=[r for _, r in entries],
+            mode="markers",
+            name=circuit_name_to_str(ansatz),
+            marker=dict(
+                color=next(color_it),
+                size=design.marker_size * 0.6,
+                symbol=next(symbol_it),
+                opacity=0.8,
+            ),
+        )
+
+    fig.add_hline(
+        y=1.0,
+        line=dict(color=design.legend_color, width=1.5, dash="dash"),
+        annotation_text="cross term",
+        annotation_position="top left",
+    )
+    fig.add_hline(
+        y=0.5,
+        line=dict(color=design.legend_color, width=1.5, dash="dot"),
+        annotation_text="self term",
+        annotation_position="bottom left",
+    )
+
+    fig.update_layout(
+        title="Oscillation Period over Encoding Generator",
+        xaxis=dict(
+            title="$\\gamma$",
+            type="log",
+            tickmode="array",
+            tickvals=sorted({g for e in points.values() for g, _ in e}),
+        ),
+        yaxis=dict(title="measured period / prediction", rangemode="tozero"),
+        template=design.template,
+        font=dict(size=design.font_size),
+        legend=design.horizontal_legend(),
+        margin=dict(b=200),
     )
 
     return fig

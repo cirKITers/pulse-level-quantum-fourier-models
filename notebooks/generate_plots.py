@@ -42,7 +42,6 @@ scenarios = {
     },
     "study-6": {
         "experiment_name": "study-6-0",
-        "show_error": False,
     },
 }
 
