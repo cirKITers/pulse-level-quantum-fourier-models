@@ -679,10 +679,14 @@ def landscape_over_circuits(df: pd.DataFrame):
     The concentrated loss depends on the comb and the target only, so its
     curves are bitwise identical across ansätze and cannot answer this
     question. The fixed-parameter loss is the slice that does see the trainable
-    unitary, through the coefficients, and both quantities are normalised by
-    what the encoding generator predicts, $2/(mts \\cdot \\gamma)$ for the
-    basin and $mts \\cdot \\gamma$ for the density, which makes the gates of
-    one run comparable so all of them are pooled.
+    unitary, through the coefficients, and both quantities are divided by what
+    the Dirichlet geometry gives for the gate being swept, $2/(mts \\cdot
+    \\gamma)$ for the basin and $mts \\cdot \\gamma$ for the density. The
+    divisor is built from the generator $\\gamma$ that gate drives and the
+    window length $mts$, not from the size of the spectrum: within one run the
+    gates differ in $\\gamma$ while $\\lvert \\Omega \\rvert$ is fixed, and
+    dividing each gate by its own value is what makes them comparable and lets
+    all of them be pooled.
 
     The shaded band in each panel is the global mean plus and minus the spread
     of the seeds within one ansatz, i.e. the noise floor of that measurement.
@@ -709,6 +713,9 @@ def landscape_over_circuits(df: pd.DataFrame):
     config = max(set(configs), key=configs.count)
 
     quantities = ("basin width", "minima per unit scaler")
+    # spelled out rather than called a prediction, so the divisor is visible
+    axis_titles = ("$W \\;/\\; 2(mts \\cdot \\gamma)^{-1}$",
+                   "$\\nu \\;/\\; mts \\cdot \\gamma$")
     colors = (design.prim_colors_lst[1], design.prim_colors_lst[0])
     by_ansatz = {q: {} for q in quantities}
     by_seed = {q: {} for q in quantities}
@@ -797,7 +804,7 @@ def landscape_over_circuits(df: pd.DataFrame):
             col=1,
         )
         fig.update_yaxes(
-            title_text=f"{quantity.split()[0]} / prediction",
+            title_text=axis_titles[it],
             rangemode="tozero",
             row=it + 1,
             col=1,
