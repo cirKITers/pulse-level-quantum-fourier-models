@@ -369,8 +369,17 @@ def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
         target (float): The aligned scaler.
 
     Returns:
-        tuple[float, float]: Basin width and local minima per unit scaler.
+        tuple[float, float]: Basin width and local minima per unit scaler, both
+        NaN if the curve is flat.
     """
+    # an ansatz whose coefficients vanish on the components the swept gate
+    # drives leaves the loss independent of that scaler. What is left is
+    # rounding noise, whose extrema carry no geometry, so such a slice is
+    # dropped rather than measured.
+    span = np.nanmax(values) - np.nanmin(values)
+    if span <= 1e-9 * abs(np.nanmean(values)):
+        return np.nan, np.nan
+
     center = int(np.argmin(np.abs(grid - target)))
     maxima = argrelmax(values)[0]
 
@@ -663,29 +672,33 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
 
 def landscape_over_circuits(df: pd.DataFrame):
     """
-    Plot the basin width of the fixed-parameter loss for each ansatz, over the
-    runs of the most frequent encoding, normalised by the Dirichlet prediction.
+    Plot the basin width and the density of local minima of the fixed-parameter
+    loss for each ansatz, over the runs of the most frequent encoding, each
+    normalised by its Dirichlet prediction.
 
     The concentrated loss depends on the comb and the target only, so its
     curves are bitwise identical across ansätze and cannot answer this
     question. The fixed-parameter loss is the slice that does see the trainable
-    unitary, through the coefficients, and the basin is the feature the
-    Dirichlet geometry pins down: $2/(mts \\cdot \\gamma)$, set by the
-    encoding generator alone. Normalising by it makes the gates of one run
-    comparable, so all of them are pooled.
+    unitary, through the coefficients, and both quantities are normalised by
+    what the encoding generator predicts, $2/(mts \\cdot \\gamma)$ for the
+    basin and $mts \\cdot \\gamma$ for the density, which makes the gates of
+    one run comparable so all of them are pooled.
 
-    The shaded band is the global mean plus and minus the spread of the seeds
-    within one ansatz, i.e. the noise floor of the measurement. Ansatz means
-    that sit inside it are not distinguishable from re-drawing the seed with
-    the same ansatz, which is the sense in which the geometry does not depend
-    on the circuit.
+    The shaded band in each panel is the global mean plus and minus the spread
+    of the seeds within one ansatz, i.e. the noise floor of that measurement.
+    Ansatz means inside it are not distinguishable from re-drawing the seed with
+    the same ansatz. The two panels behave differently: the basin is a single
+    feature bounded by the two flanking maxima and stays inside the band, while
+    the density counts every strict local minimum on the path and therefore
+    also counts the shallow ripple the coefficients contribute, which is what
+    makes it track the ansatz.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
             columns produced by ``generate_df``.
 
     Returns:
-        go.Figure: A figure showing the normalised basin width per ansatz.
+        go.Figure: A figure showing both quantities per ansatz.
     """
     rows = _landscape_rows(df)
 
@@ -695,86 +708,112 @@ def landscape_over_circuits(df: pd.DataFrame):
     configs = [(row["model.encoding_strategy"], row["model.n_qubits"]) for row in rows]
     config = max(set(configs), key=configs.count)
 
-    by_ansatz, by_seed = {}, {}
+    quantities = ("basin width", "minima per unit scaler")
+    colors = (design.prim_colors_lst[1], design.prim_colors_lst[0])
+    by_ansatz = {q: {} for q in quantities}
+    by_seed = {q: {} for q in quantities}
+
     for row, entry in zip(rows, configs):
         if entry != config:
             continue
         mts = row["landscape.mts"]
         for key in _landscape_gates(row):
             generator = row[f"landscape.generator.{key}"]
-            width, _ = _basin_and_minima(
+            width, density = _basin_and_minima(
                 np.array(row[f"landscape.eta.{key}.values"]),
                 np.array(row[f"landscape.fixed.{key}.values"]),
                 row[f"landscape.target_eta.{key}"],
             )
-            ratio = width / (2.0 / (mts * generator))
-            by_ansatz.setdefault(row["ansatz"], []).append(ratio)
-            by_seed.setdefault((row["ansatz"], generator), []).append(ratio)
+            ratios = {
+                "basin width": width / (2.0 / (mts * generator)),
+                "minima per unit scaler": density / (mts * generator),
+            }
+            for quantity, ratio in ratios.items():
+                if not np.isfinite(ratio):
+                    continue
+                by_ansatz[quantity].setdefault(row["ansatz"], []).append(ratio)
+                by_seed[quantity].setdefault((row["ansatz"], generator), []).append(
+                    ratio
+                )
 
-    ansatzes = sort_ansatzes(by_ansatz)
+    ansatzes = sort_ansatzes(by_ansatz[quantities[0]])
     labels = [circuit_name_to_str(a) for a in ansatzes]
-    means = [np.nanmean(by_ansatz[a]) for a in ansatzes]
-    overall = np.nanmean([v for values in by_ansatz.values() for v in values])
-    # spread of the seeds at a fixed ansatz and generator, i.e. what the same
-    # circuit gives when only the draw changes
-    noise = np.nanmean(
-        [np.nanstd(v) for v in by_seed.values() if len(v) > 1 and not np.all(np.isnan(v))]
-    )
 
-    fig = go.Figure()
-    fig.add_hrect(
-        y0=overall - noise,
-        y1=overall + noise,
-        fillcolor=design.prim_colors_lst[1],
-        opacity=0.15,
-        line_width=0,
-    )
-    fig.add_hline(
-        y=overall, line=dict(color=design.prim_colors_lst[1], width=1.5, dash="dash")
-    )
+    fig = make_subplots(rows=len(quantities), cols=1, shared_xaxes=True,
+                        vertical_spacing=0.07)
 
-    for it, ansatz in enumerate(ansatzes):
-        fig.add_scatter(
-            x=[labels[it]] * len(by_ansatz[ansatz]),
-            y=by_ansatz[ansatz],
-            mode="markers",
-            showlegend=False,
-            marker=dict(
-                color=design.prim_colors_lst[0],
-                size=design.marker_size * 0.4,
-                opacity=0.45,
-            ),
+    for it, quantity in enumerate(quantities):
+        values = by_ansatz[quantity]
+        means = [np.nanmean(values[a]) for a in ansatzes]
+        overall = np.nanmean([v for entries in values.values() for v in entries])
+        # spread of the seeds at a fixed ansatz and generator, i.e. what the
+        # same circuit gives when only the draw changes
+        noise = np.nanmean(
+            [
+                np.nanstd(v)
+                for v in by_seed[quantity].values()
+                if len(v) > 1 and not np.all(np.isnan(v))
+            ]
         )
 
-    fig.add_scatter(
-        x=labels,
-        y=means,
-        mode="markers",
-        name="ansatz mean",
-        marker=dict(
-            color=design.prim_colors_lst[0],
-            size=design.marker_size,
-            symbol="diamond",
-        ),
-    )
-    fig.add_scatter(
-        x=[None],
-        y=[None],
-        mode="lines",
-        name="all ansätze, seed spread",
-        line=dict(color=design.prim_colors_lst[1], width=1.5, dash="dash"),
-    )
+        fig.add_hrect(
+            y0=overall - noise,
+            y1=overall + noise,
+            fillcolor=colors[it],
+            opacity=0.15,
+            line_width=0,
+            row=it + 1,
+            col=1,
+        )
+        fig.add_hline(
+            y=overall,
+            line=dict(color=colors[it], width=1.5, dash="dash"),
+            row=it + 1,
+            col=1,
+        )
 
+        for jt, ansatz in enumerate(ansatzes):
+            fig.add_scatter(
+                x=[labels[jt]] * len(values[ansatz]),
+                y=values[ansatz],
+                mode="markers",
+                showlegend=False,
+                marker=dict(
+                    color=colors[it], size=design.marker_size * 0.4, opacity=0.45
+                ),
+                row=it + 1,
+                col=1,
+            )
+
+        fig.add_scatter(
+            x=labels,
+            y=means,
+            mode="markers",
+            name=quantity,
+            marker=dict(
+                color=colors[it], size=design.marker_size, symbol="diamond"
+            ),
+            row=it + 1,
+            col=1,
+        )
+        fig.update_yaxes(
+            title_text=f"{quantity.split()[0]} / prediction",
+            rangemode="tozero",
+            row=it + 1,
+            col=1,
+        )
+
+    fig.update_xaxes(tickangle=-60, row=len(quantities), col=1)
     fig.update_layout(
-        title=f"Basin Width over Ansatz ({config[0]}, {config[1]:.0f} qubits)",
-        xaxis=dict(tickangle=-60),
-        yaxis=dict(title="basin width / prediction", rangemode="tozero"),
+        title=f"Landscape Geometry over Ansatz ({config[0]}, {config[1]:.0f} qubits)",
         template=design.template,
         font=dict(size=design.font_size),
         legend=dict(
-            orientation="h", yanchor="top", y=-0.45, xanchor="center", x=0.5
+            orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5
         ),
         margin=dict(b=240),
+        width=1000,
+        height=800,
     )
 
     return fig
