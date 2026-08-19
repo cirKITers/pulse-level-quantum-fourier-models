@@ -20,8 +20,8 @@
 
 set -e
 
-MAX_JOBS=6
-SEEDS="1000 1001 1002"
+MAX_JOBS=5
+SEEDS="1000 1001 1002 1003 1004 1005 1006 1007 1008 1009"
 CIRCUITS="Circuit_2 Circuit_3 Circuit_4 Circuit_8 Circuit_9 Circuit_10 Circuit_13 Circuit_14 Circuit_15 Circuit_16 Circuit_17 Circuit_18 Circuit_19 Circuit_20 Strongly_Entangling Hardware_Efficient"
 COMMON="data.offgrid_resolution=4,data.mts=4"
 
