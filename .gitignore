@@ -1,33 +1,24 @@
+AGENTS.md
+docs
 # remove when in a stable phase
 results
 mlruns_bckp
 logs
 .pytest_cache
 .vscode
-##########################
-# KEDRO PROJECT
 
-# ignore all local configuration
-conf/local/**
-!conf/local/.gitkeep
+# Everything a run produces or consumes: the engine's store, and each study's
+# own results, figures and logs. Reproducible from the flows plus `dev/`.
+.fluksio/
+dev/*/results/
+dev/*/figures/
+dev/*/logs/
 
-# ignore potentially sensitive credentials files
-conf/**/*credentials*
-
-# ignore everything in the following folders
-data/**
-
-# except their sub-folders
-!data/**/
-
-# also keep all .gitkeep files
-!.gitkeep
-
-# ignore kedro-viz metadata
-.viz
-
-# ignore file based logs
-*.log
+# The MLflow history of the kedro era, and what was exported from it
+mlruns_paper/
+mlruns.tar.gz
+pulse-level-quantum-fourier-models.tar.gz
+study-*.csv
 
 ##########################
 # Common files
