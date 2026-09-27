@@ -18,7 +18,7 @@ set -u
 cd "$(dirname "$0")/.."
 FLOWS=${*:-"fcc fidelity expressibility train train_enc spectrum landscape"}
 SINCE=${SINCE:-}
-export FLUKSIO_URL=${FLUKSIO_URL:-http://127.0.0.1:8765}
+export FLUKSIO_URL=${FLUKSIO_URL:-http://127.0.0.1:8767}
 export FLUKSIO_TOKEN=${FLUKSIO_TOKEN:-$(python3 -c "import json;print(json.load(open('.fluksio/client.json'))['token'])")}
 
 for flow in $FLOWS; do
