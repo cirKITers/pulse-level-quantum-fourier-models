@@ -20,7 +20,8 @@ from qml_essentials.ansaetze import Encoding
 from qml_essentials.coefficients import Coefficients
 from qml_essentials.model import Model
 
-from pulse_level_qfms.pipelines.processing.nodes import PulseFCC, _MODE_BY_GROUPS
+from pulse_level_qfms.fcc import PulseFCC
+from pulse_level_qfms.model import MODE_BY_GROUPS
 
 N_SAMPLES = 3
 SEED = 1000
@@ -58,12 +59,12 @@ def test_all_four_regimes_are_reachable_from_sample_axis(sample_axis, expected_m
     without a second parameter.
     """
     sampled = frozenset(g for g in ("pulse", "enc_pulse") if g in sample_axis)
-    assert _MODE_BY_GROUPS[sampled] == expected_mode
+    assert MODE_BY_GROUPS[sampled] == expected_mode
 
 
 def test_every_regime_has_a_sample_axis():
     """No mode is unreachable, in particular enc_pulse."""
-    assert set(_MODE_BY_GROUPS.values()) == {
+    assert set(MODE_BY_GROUPS.values()) == {
         "unitary",
         "ansatz_pulse",
         "enc_pulse",

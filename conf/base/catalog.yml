@@ -1,3 +1,0 @@
-fig_time_domain:
-  type: pulse_level_qfms.utils.MlFlowPlotlyArtifact
-  filepath: "time_domain.html"
