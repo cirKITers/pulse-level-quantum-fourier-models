@@ -14,11 +14,4 @@ import jax
 
 jax.config.update("jax_enable_x64", True)
 
-# jaqsi sizes its CPU tiles for two statevectors per sample within the L3 share
-# it reads from sysfs; pulse-level samples also hold the ODE stages, so on a
-# shared VM those tiles overflow the cache once several runs share the machine.
-import jaqsi.memory  # noqa: E402
-
-jaqsi.memory.CACHE_BYTES = 64 * 1024
-
 __version__ = "0.1"
