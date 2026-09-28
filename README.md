@@ -2,7 +2,7 @@
 
 Studies of what a quantum Fourier model gains, and loses, when its gates run as
 calibrated pulses rather than as ideal unitaries. s1–s4 are the paper's
-studies; s5–s7 extend them to pulse-level encodings.
+studies; s5–s8 extend them to pulse-level encodings.
 
 Tech stack:
 - qml-essentials: quantum Fourier models, simulated by its JAX backend jaqsi
@@ -57,6 +57,7 @@ A flow is named by what it computes; a study is a driver over one flow:
 | `s5-spectrum` | `spectrum` | 1530 | where the coefficients sit under encoding pulse distortion |
 | `s6-landscape` | `landscape` | 240 | the loss along each encoding pulse scaler |
 | `s7-ablation` | `train_enc` | 364 | training on an off-grid target with the encoding at pulse level |
+| `s8-trained-slice` | `landscape` | 36 | the loss along each encoding pulse scaler with the ansatz trained at every scaler |
 
 Every flow reports `model_spec`: the parameter counts and the pulse configuration
 the run was built under.
