@@ -233,6 +233,23 @@ landscape = Flow(
         Port("eta_max", "float", initial=2.0),
         Port("points_per_period", "int", initial=20),
         Port("chunk", "int", initial=64),
+        # the trained slice: Adam steps at every scaler, 0 leaves it out;
+        # "enc_pulse" trains theta, "all_pulse" theta and the trainable-gate
+        # pulse scalers
+        Port("steps", "int", initial=0),
+        Port("learning_rate", "float", initial=1e-2),
+        Port("gate_mode", "str", initial="enc_pulse"),
+        # periods kept around the stretch from eta=1 to the target, 0 keeps
+        # [eta_min, eta_max]
+        Port("eta_window", "float", initial=0.0),
     ],
-    outputs=["model_spec", "dataset_info", "landscape", "profile", "analytic", "fixed"],
+    outputs=[
+        "model_spec",
+        "dataset_info",
+        "landscape",
+        "profile",
+        "analytic",
+        "fixed",
+        "trained",
+    ],
 )
