@@ -233,12 +233,15 @@ landscape = Flow(
         Port("eta_max", "float", initial=2.0),
         Port("points_per_period", "int", initial=20),
         Port("chunk", "int", initial=64),
-        # the trained slice: a fit at the target scalers, then Adam steps at
-        # every scaler, continued from its neighbour; 0 steps leaves it out.
+        # the trained slice: the best of several fits at the target scalers,
+        # continued out and back along each grid with Adam steps per scaler,
+        # repeated from an improved target fit; 0 steps leaves it out.
         # "enc_pulse" trains theta, "all_pulse" theta and the trainable-gate
         # pulse scalers
         Port("steps", "int", initial=0),
         Port("fit_steps", "int", initial=500),
+        Port("fit_starts", "int", initial=4),
+        Port("rounds", "int", initial=3),
         Port("learning_rate", "float", initial=1e-2),
         Port("gate_mode", "str", initial="enc_pulse"),
         # periods kept around the stretch from eta=1 to the target, 0 keeps

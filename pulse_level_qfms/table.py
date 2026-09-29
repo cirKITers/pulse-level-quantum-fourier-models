@@ -176,11 +176,15 @@ def _landscape(engine: Client, ids: List[str], rows: List[Dict[str, Any]]) -> No
         info = result["landscape"]
         for name in ("mts", "n_gates", "n_frequencies"):
             row[f"landscape.{name}"] = info[name]
-        if "fit_loss" in info:
-            row["landscape.fit_loss"] = info["fit_loss"]
+        row["landscape.eta_window"] = info.get("eta_window")
+        # what the fits of the trained slice reached, see _trained_sweeps
+        for name in ("fit_loss", "start_loss", "target_loss"):
+            if name in info:
+                row[f"landscape.{name}"] = info[name]
         for gate in info["gates"]:
             row[f"landscape.generator.{gate['key']}"] = float(gate["generator"])
             row[f"landscape.target_eta.{gate['key']}"] = float(gate["target_eta"])
+            row[f"landscape.profile_mfs.{gate['key']}"] = gate["profile_mfs"]
         for curve in ("profile", "analytic", "fixed", "trained"):
             for line in result[curve]["lines"]:
                 key = line["label"]

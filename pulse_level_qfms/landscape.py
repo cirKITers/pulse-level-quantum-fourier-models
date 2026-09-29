@@ -230,22 +230,31 @@ def _trained_sweeps(
     grids: Dict[str, np.ndarray],
     gate_mode: str,
     fit_steps: int,
+    fit_starts: int,
     steps: int,
+    rounds: int,
     learning_rate: float,
-) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
+) -> Tuple[Dict[str, np.ndarray], Dict[str, List[float]]]:
     """
     Evaluate the loss over the scaler grid of every gate with the ansatz
     trained along the sweep.
 
-    The ansatz is first fitted at the aligned scalers for `fit_steps` Adam
-    steps, from the parameters the fixed slice holds: $\\theta$ under
+    The ansatz is first fitted at the target scalers for `fit_steps` Adam
+    steps, from the parameters the fixed slice holds and from `fit_starts`
+    random draws of $\\theta$, keeping the best fit: $\\theta$ under
     ``gate_mode="enc_pulse"``, $\\theta$ and the trainable-gate pulse scalers
     $\\kappa$ (from ones) under ``"all_pulse"``. Each slice then continues from
-    that fit outward from the aligned scaler in both directions, every point
-    starting from its neighbour's parameters and taking `steps` more steps.
-    Continuation traces the optimum connected to the fit; an independent fit
-    per point lands in scattered optima, whose scatter adds minima of its own.
-    Without any steps this is the fixed slice.
+    that fit outward from the target scaler to both ends of its grid and back,
+    every point starting from its neighbour's parameters and taking `steps`
+    steps with a fresh optimizer.
+
+    A local fit is path dependent: moving the scalers can lead the parameters
+    out of a poor optimum, and a slice that keeps improving along the way
+    records the optimizer's progress rather than the landscape. So the best
+    chain returning to the target is fitted there once more, and while that
+    lowers the target loss by more than a percent the sweep is repeated from
+    it, for at most `rounds` rounds. Every point keeps the lowest loss any pass
+    reached. Without any steps this is the fixed slice.
 
     Args:
         model (Model): The QFM model.
@@ -257,14 +266,18 @@ def _trained_sweeps(
             each encoding gate.
         grids (Dict[str, np.ndarray]): Scaler grid of each gate, by gate key.
         gate_mode (str): ``"enc_pulse"`` or ``"all_pulse"``.
-        fit_steps (int): Adam steps of the fit at the aligned scalers.
+        fit_steps (int): Adam steps of a fit at the target scalers.
+        fit_starts (int): Random draws of $\\theta$ fitted besides the initial one.
         steps (int): Adam steps per point of the continuation.
+        rounds (int): Most sweeps from an improved target fit.
         learning_rate (float): Adam learning rate, for $\\theta$ and $\\kappa$.
 
     Returns:
-        Tuple[Dict[str, np.ndarray], np.ndarray]: Mean squared error per grid
-        point of every gate, and the loss of the aligned fit after every tenth
-        of its steps.
+        Tuple[Dict[str, np.ndarray], Dict[str, List[float]]]: Mean squared
+        error per grid point of every gate, and what the fits reached: the best
+        start's loss after every tenth of its steps (`fit_loss`), every start's
+        final loss (`start_loss`) and the target loss before the first and after
+        every round (`target_loss`).
     """
     if gate_mode not in ("enc_pulse", "all_pulse"):
         raise ValueError(
@@ -272,9 +285,15 @@ def _trained_sweeps(
             f"has to be 'enc_pulse' or 'all_pulse', got {gate_mode!r}."
         )
     y = jnp.asarray(y)
-    params = {"theta": jnp.asarray(model.params)}
+    theta = jnp.asarray(model.params)
+    low, high = model._initialization_domain
+    starts = [theta] + [
+        jax.random.uniform(key, theta.shape, minval=low, maxval=high)
+        for key in jax.random.split(model.random_key, fit_starts)
+    ]
+    extra = {}
     if gate_mode == "all_pulse":
-        params["kappa"] = jnp.ones_like(model.pulse_params)
+        extra["kappa"] = jnp.ones_like(model.pulse_params)
 
     def loss(params, enc_pulse_params):
         prediction = model(
@@ -298,6 +317,15 @@ def _trained_sweeps(
 
     evaluate = jax.jit(loss)
 
+    def train(params, enc_pulse_params, n, marks=()):
+        state, curve = optimizer.init(params), []
+        for k in range(n + 1):
+            if k in marks:
+                curve.append(float(evaluate(params, enc_pulse_params)))
+            if k < n:
+                params, state = step(params, state, enc_pulse_params)
+        return params, float(evaluate(params, enc_pulse_params)), curve
+
     def scalers(layer: int, qubit: int, eta: float) -> jnp.ndarray:
         enc_pulse_params = np.ones((1, *model._enc_pulse_shape))
         enc_pulse_params[..., slot] = frozen
@@ -310,37 +338,49 @@ def _trained_sweeps(
         for name in ("params", "pulse_params", "enc_pulse_params")
     }
     try:
-        aligned = scalers(*gates[0][:2], frozen[gates[0][0], gates[0][1]])
+        target = scalers(*gates[0][:2], frozen[gates[0][0], gates[0][1]])
         marks = np.unique(np.linspace(0, fit_steps, 11).astype(int))
-        fit = []
-        state = optimizer.init(params)
-        for k in track(range(fit_steps + 1), description="Fitting at the target.."):
-            if k in marks:
-                fit.append(float(evaluate(params, aligned)))
-            if k < fit_steps:
-                params, state = step(params, state, aligned)
+        fits = [
+            train({"theta": start, **extra}, target, fit_steps, marks)
+            for start in track(starts, description="Fitting at the target..")
+        ]
+        best, best_loss, fit_loss = min(fits, key=lambda fit: fit[1])
+        record = {
+            "fit_loss": fit_loss,
+            "start_loss": [fit[1] for fit in fits],
+            "target_loss": [best_loss],
+        }
 
-        curves = {}
-        for layer, qubit, _ in gates:
-            key = f"l{layer}.q{qubit}"
-            grid = grids[key]
-            losses = np.empty(len(grid))
-            center = int(np.abs(grid - frozen[layer, qubit]).argmin())
-            for order in (range(center, len(grid)), range(center, -1, -1)):
-                point, state = params, optimizer.init(params)
-                for i in track(
-                    order, description=f"Continuing along layer {layer} qubit {qubit}.."
-                ):
-                    enc_pulse_params = scalers(layer, qubit, grid[i])
-                    for _ in range(steps):
-                        point, state = step(point, state, enc_pulse_params)
-                    losses[i] = float(evaluate(point, enc_pulse_params))
-            curves[key] = losses
+        curves = {key: np.full(len(grid), np.inf) for key, grid in grids.items()}
+        for _ in range(rounds):
+            returned = []
+            for layer, qubit, _ in gates:
+                key = f"l{layer}.q{qubit}"
+                grid = grids[key]
+                center = int(np.abs(grid - frozen[layer, qubit]).argmin())
+                for out in (range(center, len(grid)), range(center, -1, -1)):
+                    point, value = best, best_loss
+                    for i in track(
+                        [*out, *reversed(out)],
+                        description=f"Continuing along layer {layer} qubit {qubit}..",
+                    ):
+                        enc_pulse_params = scalers(layer, qubit, grid[i])
+                        point, value, _ = train(point, enc_pulse_params, steps)
+                        curves[key][i] = min(curves[key][i], value)
+                    returned.append((point, value))
+            back = min(returned, key=lambda chain: chain[1])[0]
+            point, value, _ = train(back, target, fit_steps)
+            improved = value < 0.99 * best_loss
+            if improved:
+                best, best_loss = point, value
+            record["target_loss"].append(best_loss)
+            if not improved:
+                break
     finally:
         for name, value in saved.items():
             setattr(model, name, value)
 
-    return curves, np.array(fit)
+    return curves, record
 
 
 def _profile_grid(
@@ -581,6 +621,8 @@ def sweep_landscape(
     chunk: int,
     steps: int = 0,
     fit_steps: int = 500,
+    fit_starts: int = 4,
+    rounds: int = 3,
     learning_rate: float = 1e-2,
     gate_mode: str = "enc_pulse",
     eta_window: float = 0.0,
@@ -628,8 +670,12 @@ def sweep_landscape(
         chunk (int): Number of scalers per model call.
         steps (int, optional): Adam steps per scaler for the `trained` curve,
             0 leaves it out. Defaults to 0.
-        fit_steps (int, optional): Adam steps of its fit at the aligned
+        fit_steps (int, optional): Adam steps of its fits at the target
             scalers. Defaults to 500.
+        fit_starts (int, optional): Random starts of that fit besides the
+            initial parameters. Defaults to 4.
+        rounds (int, optional): Most sweeps from an improved target fit.
+            Defaults to 3.
         learning_rate (float, optional): Its learning rate. Defaults to 1e-2.
         gate_mode (str, optional): What it trains, ``"enc_pulse"`` for
             $\\theta$ or ``"all_pulse"`` for $\\theta$ and $\\kappa$. Defaults to
@@ -676,6 +722,8 @@ def sweep_landscape(
         "chunk": chunk,
         "steps": steps,
         "fit_steps": fit_steps,
+        "fit_starts": fit_starts,
+        "rounds": rounds,
         "learning_rate": learning_rate,
         "gate_mode": gate_mode,
         "eta_window": eta_window,
@@ -735,7 +783,7 @@ def sweep_landscape(
         )
 
     if steps:
-        curves["trained"], fit = _trained_sweeps(
+        curves["trained"], record = _trained_sweeps(
             model,
             domain,
             y,
@@ -745,10 +793,12 @@ def sweep_landscape(
             curves["eta"],
             gate_mode,
             fit_steps,
+            fit_starts,
             steps,
+            rounds,
             learning_rate,
         )
-        info["fit_loss"] = fit.tolist()
+        info.update(record)
 
     return info, curves
 
@@ -787,6 +837,8 @@ def as_series(values: Dict[str, np.ndarray], grids: Dict[str, np.ndarray]) -> Di
         Port("chunk", "int"),
         Port("steps", "int"),
         Port("fit_steps", "int"),
+        Port("fit_starts", "int"),
+        Port("rounds", "int"),
         Port("learning_rate", "float"),
         Port("gate_mode", "str"),
         Port("eta_window", "float"),
@@ -817,6 +869,8 @@ def sweep_loss_landscape(
     chunk: int,
     steps: int,
     fit_steps: int,
+    fit_starts: int,
+    rounds: int,
     learning_rate: float,
     gate_mode: str,
     eta_window: float,
@@ -839,6 +893,8 @@ def sweep_loss_landscape(
         chunk=chunk,
         steps=steps,
         fit_steps=fit_steps,
+        fit_starts=fit_starts,
+        rounds=rounds,
         learning_rate=learning_rate,
         gate_mode=gate_mode,
         eta_window=eta_window,
