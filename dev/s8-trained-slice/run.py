@@ -1,8 +1,8 @@
-"""s8 -- the fixed slice of s6, with the ansatz trained at every scaler.
+"""s8 -- the fixed slice of s6, with the ansatz trained along the sweep.
 
 The fixed slice holds the variational parameters at their initial values, so
 its ripples mix the Dirichlet geometry of the window with coefficients that do
-not fit the target. Training the ansatz at every scaler moves the slice toward
+not fit the target. Training the ansatz along the sweep moves the slice toward
 the concentrated one as far as the ansatz can realize free coefficients, and
 the trainable-gate pulse scalers enlarge what it can realize. Every cell is
 therefore trained twice from the same parameters: theta alone (enc_pulse) and
@@ -20,11 +20,10 @@ from pulse_level_qfms.sweep import main
 OUT = Path(__file__).resolve().parent / "results" / "driver.json"
 
 #: s6's ansatz block as the thesis ran it (one layer, ternary on three qubits,
-#: all flow defaults), trained for 100 Adam steps at every scaler within three
-#: oscillation periods of the stretch from eta = 1 to the target. Eight
-#: scalers per chunk: the pulse gradients hold about 1.6 GB per run there, and
-#: 6 GB at the default 64, at the same cost per scaler.
-COMMON = {"offgrid_resolution": 4, "steps": 100, "eta_window": 3.0, "chunk": 8}
+#: all flow defaults), within three oscillation periods of the stretch from
+#: eta = 1 to the target. The ansatz is fitted at the target (fit_steps, 500 by
+#: default), then continued outward with 20 Adam steps per scaler.
+COMMON = {"offgrid_resolution": 4, "steps": 20, "eta_window": 3.0}
 
 #: A pilot over the range of pulse parameter counts. C9 is left out: its
 #: gamma = 3 slice is flat.
