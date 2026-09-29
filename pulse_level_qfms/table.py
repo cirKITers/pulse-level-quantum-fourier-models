@@ -133,6 +133,7 @@ def _row(run: Dict[str, Any]) -> Dict[str, Any]:
         row["model.n_qubits"] = param("n_qubits")
         # what the trained slice trained, if there is one
         row["landscape.steps"] = param("steps")
+        row["landscape.fit_steps"] = param("fit_steps")
         row["landscape.gate_mode"] = param("gate_mode")
 
     return row
@@ -175,13 +176,11 @@ def _landscape(engine: Client, ids: List[str], rows: List[Dict[str, Any]]) -> No
         info = result["landscape"]
         for name in ("mts", "n_gates", "n_frequencies"):
             row[f"landscape.{name}"] = info[name]
+        if "fit_loss" in info:
+            row["landscape.fit_loss"] = info["fit_loss"]
         for gate in info["gates"]:
             row[f"landscape.generator.{gate['key']}"] = float(gate["generator"])
             row[f"landscape.target_eta.{gate['key']}"] = float(gate["target_eta"])
-            if "trained_mean_loss" in gate:
-                row[f"landscape.trained_mean_loss.{gate['key']}"] = gate[
-                    "trained_mean_loss"
-                ]
         for curve in ("profile", "analytic", "fixed", "trained"):
             for line in result[curve]["lines"]:
                 key = line["label"]
