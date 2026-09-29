@@ -220,50 +220,51 @@ def _pulse_sweep(
     return losses
 
 
-def _trained_sweep(
+def _trained_sweeps(
     model: Model,
     x: jnp.ndarray,
     y: np.ndarray,
-    layer: int,
-    qubit: int,
     slot: int,
-    grid: np.ndarray,
     frozen: np.ndarray,
-    chunk: int,
+    gates: List[Tuple[int, int, float]],
+    grids: Dict[str, np.ndarray],
     gate_mode: str,
+    fit_steps: int,
     steps: int,
     learning_rate: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
     """
-    Evaluate the loss over the scaler grid after training the ansatz at every
-    scaler.
+    Evaluate the loss over the scaler grid of every gate with the ansatz
+    trained along the sweep.
 
-    Every grid point starts from the parameters the fixed slice holds and
-    trains its own copy of them with Adam: $\\theta$ under
+    The ansatz is first fitted at the aligned scalers for `fit_steps` Adam
+    steps, from the parameters the fixed slice holds: $\\theta$ under
     ``gate_mode="enc_pulse"``, $\\theta$ and the trainable-gate pulse scalers
-    $\\kappa$ (from ones) under ``"all_pulse"``. At zero steps this is the fixed
-    slice. A chunk of scalers is trained at once by mapping the model over its
-    points; the model's own batch axes would pair every parameter set with
-    every scaler instead.
+    $\\kappa$ (from ones) under ``"all_pulse"``. Each slice then continues from
+    that fit outward from the aligned scaler in both directions, every point
+    starting from its neighbour's parameters and taking `steps` more steps.
+    Continuation traces the optimum connected to the fit; an independent fit
+    per point lands in scattered optima, whose scatter adds minima of its own.
+    Without any steps this is the fixed slice.
 
     Args:
         model (Model): The QFM model.
         x (jnp.ndarray): Domain samples of shape (n_points, n_input_feat).
         y (np.ndarray): Target values of shape (n_points,).
-        layer (int): Layer of the encoding gate whose scaler is swept.
-        qubit (int): Qubit of that gate.
         slot (int): Pulse parameter slot holding the amplitude.
-        grid (np.ndarray): Scaler values to evaluate.
-        frozen (np.ndarray): Amplitude scalers of the remaining gates, shape
-            (n_layers, n_qubits).
-        chunk (int): Number of scalers trained at once.
+        frozen (np.ndarray): Target scalers of shape (n_layers, n_qubits).
+        gates (List[Tuple[int, int, float]]): Layer, qubit and generator of
+            each encoding gate.
+        grids (Dict[str, np.ndarray]): Scaler grid of each gate, by gate key.
         gate_mode (str): ``"enc_pulse"`` or ``"all_pulse"``.
-        steps (int): Adam steps per scaler.
+        fit_steps (int): Adam steps of the fit at the aligned scalers.
+        steps (int): Adam steps per point of the continuation.
         learning_rate (float): Adam learning rate, for $\\theta$ and $\\kappa$.
 
     Returns:
-        Tuple[np.ndarray, np.ndarray]: Mean squared error per grid point after
-        training, and its mean over the grid after every tenth of the steps.
+        Tuple[Dict[str, np.ndarray], np.ndarray]: Mean squared error per grid
+        point of every gate, and the loss of the aligned fit after every tenth
+        of its steps.
     """
     if gate_mode not in ("enc_pulse", "all_pulse"):
         raise ValueError(
@@ -271,11 +272,11 @@ def _trained_sweep(
             f"has to be 'enc_pulse' or 'all_pulse', got {gate_mode!r}."
         )
     y = jnp.asarray(y)
-    start_params = {"theta": jnp.asarray(model.params)}
+    params = {"theta": jnp.asarray(model.params)}
     if gate_mode == "all_pulse":
-        start_params["kappa"] = jnp.ones_like(model.pulse_params)
+        params["kappa"] = jnp.ones_like(model.pulse_params)
 
-    def point_loss(params, enc_pulse_params):
+    def loss(params, enc_pulse_params):
         prediction = model(
             params=params["theta"],
             pulse_params=params.get("kappa"),
@@ -287,63 +288,59 @@ def _trained_sweep(
         )
         return jnp.mean((prediction.ravel() - y) ** 2)
 
-    def total(params, enc_pulse_params):
-        losses = jax.vmap(point_loss)(params, enc_pulse_params)
-        return losses.sum(), losses
-
     optimizer = optax.adam(learning_rate)
 
     @jax.jit
     def step(params, state, enc_pulse_params):
-        (_, losses), grads = jax.value_and_grad(total, has_aux=True)(
-            params, enc_pulse_params
-        )
+        grads = jax.grad(loss)(params, enc_pulse_params)
         updates, state = optimizer.update(grads, state, params)
-        return losses, optax.apply_updates(params, updates), state
+        return optax.apply_updates(params, updates), state
 
-    evaluate = jax.jit(lambda params, enc: total(params, enc)[1])
+    evaluate = jax.jit(loss)
 
-    marks = np.unique(np.linspace(0, steps, 11).astype(int))
-    history = np.empty((len(marks), len(grid)))
+    def scalers(layer: int, qubit: int, eta: float) -> jnp.ndarray:
+        enc_pulse_params = np.ones((1, *model._enc_pulse_shape))
+        enc_pulse_params[..., slot] = frozen
+        enc_pulse_params[0, layer, qubit, slot] = eta
+        return jnp.array(enc_pulse_params)
+
     # the model keeps whatever it is called with, tracers included
     saved = {
         name: getattr(model, name)
         for name in ("params", "pulse_params", "enc_pulse_params")
     }
     try:
-        for start in track(
-            range(0, len(grid), chunk),
-            description=f"Training along layer {layer} qubit {qubit}..",
-        ):
-            block = grid[start : start + chunk]
-            padded = np.full(chunk, block[-1])
-            padded[: len(block)] = block
+        aligned = scalers(*gates[0][:2], frozen[gates[0][0], gates[0][1]])
+        marks = np.unique(np.linspace(0, fit_steps, 11).astype(int))
+        fit = []
+        state = optimizer.init(params)
+        for k in track(range(fit_steps + 1), description="Fitting at the target.."):
+            if k in marks:
+                fit.append(float(evaluate(params, aligned)))
+            if k < fit_steps:
+                params, state = step(params, state, aligned)
 
-            # one leading axis for the map, one for the model's own batch
-            enc_pulse_params = np.ones((chunk, 1, *model._enc_pulse_shape))
-            enc_pulse_params[..., slot] = frozen
-            enc_pulse_params[:, 0, layer, qubit, slot] = padded
-            enc_pulse_params = jnp.array(enc_pulse_params)
-
-            params = jax.tree.map(
-                lambda p: jnp.repeat(p[None], chunk, axis=0), start_params
-            )
-            state = optimizer.init(params)
-            for k in range(steps + 1):
-                if k < steps:
-                    losses, params, state = step(params, state, enc_pulse_params)
-                else:
-                    losses = evaluate(params, enc_pulse_params)
-                if k in marks:
-                    row = int(np.searchsorted(marks, k))
-                    history[row, start : start + len(block)] = np.asarray(losses)[
-                        : len(block)
-                    ]
+        curves = {}
+        for layer, qubit, _ in gates:
+            key = f"l{layer}.q{qubit}"
+            grid = grids[key]
+            losses = np.empty(len(grid))
+            center = int(np.abs(grid - frozen[layer, qubit]).argmin())
+            for order in (range(center, len(grid)), range(center, -1, -1)):
+                point, state = params, optimizer.init(params)
+                for i in track(
+                    order, description=f"Continuing along layer {layer} qubit {qubit}.."
+                ):
+                    enc_pulse_params = scalers(layer, qubit, grid[i])
+                    for _ in range(steps):
+                        point, state = step(point, state, enc_pulse_params)
+                    losses[i] = float(evaluate(point, enc_pulse_params))
+            curves[key] = losses
     finally:
         for name, value in saved.items():
             setattr(model, name, value)
 
-    return history[-1], history.mean(axis=1)
+    return curves, np.array(fit)
 
 
 def _profile_grid(
@@ -583,6 +580,7 @@ def sweep_landscape(
     points_per_period: int,
     chunk: int,
     steps: int = 0,
+    fit_steps: int = 500,
     learning_rate: float = 1e-2,
     gate_mode: str = "enc_pulse",
     eta_window: float = 0.0,
@@ -606,9 +604,9 @@ def sweep_landscape(
       :func:`_analytic_mse`.
     - `fixed`, the loss at the current variational parameters on the training
       grid, i.e. the slice the optimizer sees before its coefficients adapt.
-    - `trained`, with ``steps > 0``: the same loss after training the ansatz at
-      every scaler, see :func:`_trained_sweep`. It lies between `fixed` and
-      `profile` as far as the ansatz can realize the free coefficients.
+    - `trained`, with ``steps > 0``: the same loss with the ansatz trained
+      along the sweep, see :func:`_trained_sweeps`. It lies between `fixed`
+      and `profile` as far as the ansatz can realize the free coefficients.
 
     The remaining gates are held at their target scalers, so each slice
     contains the aligned configuration and the path from the initial scaler
@@ -630,6 +628,8 @@ def sweep_landscape(
         chunk (int): Number of scalers per model call.
         steps (int, optional): Adam steps per scaler for the `trained` curve,
             0 leaves it out. Defaults to 0.
+        fit_steps (int, optional): Adam steps of its fit at the aligned
+            scalers. Defaults to 500.
         learning_rate (float, optional): Its learning rate. Defaults to 1e-2.
         gate_mode (str, optional): What it trains, ``"enc_pulse"`` for
             $\\theta$ or ``"all_pulse"`` for $\\theta$ and $\\kappa$. Defaults to
@@ -675,6 +675,7 @@ def sweep_landscape(
         "points_per_period": points_per_period,
         "chunk": chunk,
         "steps": steps,
+        "fit_steps": fit_steps,
         "learning_rate": learning_rate,
         "gate_mode": gate_mode,
         "eta_window": eta_window,
@@ -685,16 +686,17 @@ def sweep_landscape(
     }
     # keyed by gate rather than dotted into the record: a key holding a dot is
     # not addressable as an export path
-    names = ("eta", "profile", "analytic", "fixed") + (("trained",) if steps else ())
-    curves: Dict[str, Dict[str, np.ndarray]] = {name: {} for name in names}
+    curves: Dict[str, Dict[str, np.ndarray]] = {
+        name: {} for name in ("eta", "profile", "analytic", "fixed")
+    }
 
     for j, (layer, qubit, generator) in enumerate(gates):
         key = f"l{layer}.q{qubit}"
         grid = _sweep_grid(eta_min, eta_max, points_per_period, mts, generator)
         if eta_window:
             # all that basin width and minima density read: the stretch from
-            # the calibrated to the aligned scaler and the lobes around both
-            # the tolerance keeps a bound that lands on the grid despite rounding
+            # the calibrated to the aligned scaler and the lobes around both,
+            # with a tolerance that keeps a bound landing on the grid
             margin = eta_window / (mts * generator) + 1e-9
             lo, hi = sorted((1.0, aligned[j]))
             grid = grid[(grid >= lo - margin) & (grid <= hi + margin)]
@@ -731,22 +733,22 @@ def sweep_landscape(
         curves["fixed"][key] = _pulse_sweep(
             model, domain, y, layer, qubit, slot, grid, frozen, chunk
         )
-        if steps:
-            curves["trained"][key], settled = _trained_sweep(
-                model,
-                domain,
-                y,
-                layer,
-                qubit,
-                slot,
-                grid,
-                frozen,
-                chunk,
-                gate_mode,
-                steps,
-                learning_rate,
-            )
-            info["gates"][-1]["trained_mean_loss"] = settled.tolist()
+
+    if steps:
+        curves["trained"], fit = _trained_sweeps(
+            model,
+            domain,
+            y,
+            slot,
+            frozen,
+            gates,
+            curves["eta"],
+            gate_mode,
+            fit_steps,
+            steps,
+            learning_rate,
+        )
+        info["fit_loss"] = fit.tolist()
 
     return info, curves
 
@@ -784,6 +786,7 @@ def as_series(values: Dict[str, np.ndarray], grids: Dict[str, np.ndarray]) -> Di
         Port("points_per_period", "int"),
         Port("chunk", "int"),
         Port("steps", "int"),
+        Port("fit_steps", "int"),
         Port("learning_rate", "float"),
         Port("gate_mode", "str"),
         Port("eta_window", "float"),
@@ -796,7 +799,7 @@ def as_series(values: Dict[str, np.ndarray], grids: Dict[str, np.ndarray]) -> Di
         Port("trained", "series"),
     ],
     # One model call per chunk of scalers, per gate, and the progress bar it
-    # prints is not something the watchdog can see. Training at every scaler
+    # prints is not something the watchdog can see. Training along the sweep
     # with pulse-level trainable gates takes hours per run.
     timeout=172800,
     cache=False,
@@ -813,6 +816,7 @@ def sweep_loss_landscape(
     points_per_period: int,
     chunk: int,
     steps: int,
+    fit_steps: int,
     learning_rate: float,
     gate_mode: str,
     eta_window: float,
@@ -834,6 +838,7 @@ def sweep_loss_landscape(
         points_per_period=points_per_period,
         chunk=chunk,
         steps=steps,
+        fit_steps=fit_steps,
         learning_rate=learning_rate,
         gate_mode=gate_mode,
         eta_window=eta_window,
