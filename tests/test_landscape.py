@@ -32,10 +32,15 @@ def test_trained_slice_starts_at_the_fixed_slice():
     sweep = (model, x, y, slot, frozen, gates, {"l0.q1": grid}, "enc_pulse")
 
     fixed = _pulse_sweep(model, x, y, 0, 1, slot, grid, frozen, 2)
-    start, fit = _trained_sweeps(*sweep, 0, 0, 1e-2)
+    # no fit, no random start, no steps, one round
+    start, record = _trained_sweeps(*sweep, 0, 0, 0, 1, 1e-2)
     assert np.allclose(start["l0.q1"], fixed, rtol=1e-10, atol=1e-12)
-    assert np.isclose(fit[0], fixed[2])
+    assert np.isclose(record["target_loss"][0], fixed[2])
 
-    trained, fit = _trained_sweeps(*sweep, 10, 3, 1e-2)
-    assert fit[-1] < fit[0]
-    assert (trained["l0.q1"] < fixed).all()
+    trained, record = _trained_sweeps(*sweep, 10, 2, 3, 3, 1e-2)
+    assert len(record["start_loss"]) == 3
+    assert record["target_loss"][0] == min(record["start_loss"])
+    assert all(np.diff(record["target_loss"]) <= 0)
+    # the best start need not beat the initial parameters far from the target
+    assert trained["l0.q1"][2] < fixed[2]
+    assert trained["l0.q1"].mean() < fixed.mean()
