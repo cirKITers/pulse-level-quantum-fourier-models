@@ -57,7 +57,7 @@ A flow is named by what it computes; a study is a driver over one flow:
 | `s5-spectrum` | `spectrum` | 1530 | where the coefficients sit under encoding pulse distortion |
 | `s6-landscape` | `landscape` | 240 | the loss along each encoding pulse scaler |
 | `s7-ablation` | `train_enc` | 364 | training on an off-grid target with the encoding at pulse level |
-| `s8-trained-slice` | `landscape` | 36 | the loss along each encoding pulse scaler with the ansatz trained at every scaler |
+| `s8-trained-slice` | `landscape` | 102 | the loss along each encoding pulse scaler with the ansatz trained along the sweep |
 
 Every flow reports `model_spec`: the parameter counts and the pulse configuration
 the run was built under.
