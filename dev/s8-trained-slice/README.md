@@ -5,30 +5,41 @@ toward the concentrated one, and do the trainable-gate pulse scalers bring it
 closer than the unitary parameters alone? The fixed slice narrows the basin to
 about 0.6 of its Dirichlet prediction; the concentrated slice, which fits free
 coefficients, does not. The `trained` curve of the `landscape` flow fits the
-ansatz at the target scalers (`fit_steps`, from the start of the fixed slice)
-and continues that fit outward along each gate's grid, every scaler taking
-`steps` Adam steps from its neighbour's parameters.
+ansatz at the target scalers from the start of the fixed slice and from
+`fit_starts` random draws of $\theta$, keeping the best, then continues that fit
+along each gate's grid out to both ends and back, every scaler taking `steps`
+Adam steps from its neighbour's parameters. The chain that returns to the
+target with the lowest loss is fitted there once more; while that improves
+the target loss by more than a percent, the sweep repeats from it (at most
+`rounds` times). Every scaler keeps the lowest loss any pass reached, and the
+run records the target loss of every round.
 
-Continuation, not an independent fit per scaler: a first run trained every
-scaler on its own from the initial parameters for 100 steps. Its slices landed
-in scattered optima, three times rougher than the fixed slice, and their extra
-minima narrowed the basins instead of widening them. Those runs stay in the
-engine without `fit_steps`, and `figures.py` leaves them out.
+Two earlier versions did not hold up. Training every scaler on its own from
+the initial parameters landed in scattered optima, three times rougher than
+the fixed slice. A single continuation from one fit at the target kept
+improving on its way out: in four of five slices the loss fell below its value
+at the target, because that fit had stalled in a poor optimum (C15 at seed
+1001 fits to 0.042 from its initial parameters, to 0.012 from the best random
+start). Neither version records the target loss of every round, and
+`figures.py` leaves their runs out.
 
-36 runs of the `landscape` flow: 6 ansaetze (C10, C2, C3, C15,
-Strongly_Entangling, C14; C9 is left out, its $\gamma = 3$ slice is flat)
-$\times$ 3 seeds (1000 to 1002, `model_seed = data_seed`) $\times$ 2 gate modes
-(`enc_pulse` trains $\theta$, `all_pulse` $\theta$ and $\kappa$). Everything
-else is the thesis' fixed-slice sweep: one layer, ternary encoding on three
-qubits, `mts=4`, `offgrid_resolution=4`, 20 points per oscillation. Each
-gate's grid keeps the stretch from $\eta = 1$ to its target plus three
-oscillation periods on either side (`eta_window=3`), which holds everything
-basin width and minima density read. The fit takes 500 steps, the
-continuation 20 per scaler, both at learning rate 1e-2; the fit's loss after
-every tenth of its steps is on the run.
+102 runs of the `landscape` flow: the 16 ansaetze of the thesis' fixed slices
+(C9's flat $\gamma = 3$ slice drops out of the statistics) $\times$ 3 seeds
+(1000 to 1002, `model_seed = data_seed`) $\times$ 2 gate modes (`enc_pulse`
+trains $\theta$, `all_pulse` $\theta$ and $\kappa$), plus C15, C3 and C10 at
+seed 1000 with three times the continuation steps, in both modes, to see
+whether 20 steps per scaler are enough. Everything else is the thesis'
+fixed-slice sweep: one layer, ternary encoding on three qubits, `mts=4`,
+`offgrid_resolution=4`, 20 points per oscillation. Each gate's grid keeps the
+stretch from $\eta = 1$ to its target plus three oscillation periods on
+either side (`eta_window=3`), which holds everything basin width and minima
+density read; `eta_max=2.5` keeps the right flank of a $\gamma = 1$ target at
+1.75. The fits take 500 steps from 5 starts, the continuation 20 per scaler,
+both at learning rate 1e-2, for at most 3 rounds.
 
 The `all_pulse` runs dominate: a step costs about 30 times one with $\theta$
-alone.
+alone, and the out-and-back sweep with its rounds costs two to four times a
+single continuation.
 
 ## How to re-run it
 

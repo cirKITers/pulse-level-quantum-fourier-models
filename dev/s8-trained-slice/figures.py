@@ -16,9 +16,10 @@ FIGURES = Path(__file__).resolve().parent / "figures"
 
 if __name__ == "__main__":
     df = table("landscape")
-    # s6's untrained sweeps share the flow, and so do the first s8 runs, which
-    # trained every scaler on its own and recorded no fit_steps
-    df = df[(df["landscape.steps"] > 0) & df["landscape.fit_steps"].notna()]
+    # s6's untrained sweeps share the flow, and so do the earlier s8 runs: one
+    # fit per scaler, then a single continuation from one start. Only the
+    # current method records the target loss of every round.
+    df = df[df["landscape.target_loss"].notna()]
     FIGURES.mkdir(exist_ok=True)
     df.to_csv(FIGURES / "study-8.csv", index=False)
     print(f"{len(df)} runs -> {FIGURES / 'study-8.csv'}")

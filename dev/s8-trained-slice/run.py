@@ -21,41 +21,61 @@ OUT = Path(__file__).resolve().parent / "results" / "driver.json"
 
 #: s6's ansatz block as the thesis ran it (one layer, ternary on three qubits,
 #: all flow defaults), within three oscillation periods of the stretch from
-#: eta = 1 to the target. The ansatz is fitted at the target (fit_steps, 500 by
-#: default), then continued outward with 20 Adam steps per scaler.
-COMMON = {"offgrid_resolution": 4, "steps": 20, "eta_window": 3.0}
+#: eta = 1 to the target. eta_max reaches past 2 so that a gamma = 1 target at
+#: 1.75 keeps its right flank. The ansatz is fitted at the target from five
+#: starts, then continued out and back with 20 Adam steps per scaler, for up
+#: to three rounds (the fit defaults of the flow).
+COMMON = {"offgrid_resolution": 4, "steps": 20, "eta_window": 3.0, "eta_max": 2.5}
 
-#: A pilot over the range of pulse parameter counts. C9 is left out: its
-#: gamma = 3 slice is flat.
+#: The sixteen ansaetze of the thesis' fixed slices, costliest first by pulse
+#: parameter count, so the long all_pulse runs start early. C9's gamma = 3
+#: slice is flat and drops out of the statistics, as it does in the thesis.
 CIRCUITS = [
-    "Circuit_10",
-    "Circuit_2",
-    "Circuit_3",
-    "Circuit_15",
-    "Strongly_Entangling",
     "Circuit_14",
+    "Circuit_19",
+    "Strongly_Entangling",
+    "Circuit_13",
+    "Circuit_8",
+    "Circuit_18",
+    "Circuit_20",
+    "Circuit_4",
+    "Circuit_17",
+    "Circuit_3",
+    "Circuit_16",
+    "Hardware_Efficient",
+    "Circuit_15",
+    "Circuit_2",
+    "Circuit_9",
+    "Circuit_10",
 ]
 
 #: The seeds of the thesis' fixed slices.
 SEEDS = [1000, 1001, 1002]
 
-#: theta alone first: it takes minutes, the pulse scalers take hours.
-GATE_MODES = ["enc_pulse", "all_pulse"]
+#: Whether 20 steps per scaler is enough: three of the ansaetze once more at
+#: three times the steps.
+SENSITIVITY = [
+    {**COMMON, "steps": 60, "circuit_type": circuit, "model_seed": 1000}
+    | {"data_seed": 1000}
+    for circuit in ("Circuit_15", "Circuit_3", "Circuit_10")
+]
 
 
 def cells():
-    """Every ansatz and seed, once per gate mode."""
-    return [
-        {
-            **COMMON,
-            "gate_mode": mode,
-            "circuit_type": circuit,
-            "model_seed": seed,
-            "data_seed": seed,
-        }
-        for mode in GATE_MODES
+    """theta alone first, it takes minutes; then theta with the pulse scalers,
+    which takes hours, the sensitivity runs being the longest."""
+    grid = [
+        {**COMMON, "circuit_type": circuit, "model_seed": seed, "data_seed": seed}
         for circuit in CIRCUITS
         for seed in SEEDS
+    ]
+    return [
+        {**cell, "gate_mode": mode}
+        for mode, block in (
+            ("enc_pulse", grid + SENSITIVITY),
+            ("all_pulse", SENSITIVITY + grid),
+        )
+        for cell in block
     ]
 
 
