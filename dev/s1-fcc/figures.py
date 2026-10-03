@@ -1,4 +1,4 @@
-"""s1 -- figures, and the paper's study-1.csv, from the finished `fcc` runs.
+"""s1 -- figures and study-1.csv from finished `fcc` runs.
 
     dev/serve.sh &
     uv run python dev/s1-fcc/figures.py
@@ -19,7 +19,7 @@ SELECT = {}
 if __name__ == "__main__":
     df = table("fcc", **SELECT)
     FIGURES.mkdir(exist_ok=True)
-    # the table the paper's R plots were built from
+    # export the run table for further analysis
     df.to_csv(FIGURES / "study-1.csv", index=False)
     viz.save(
         {

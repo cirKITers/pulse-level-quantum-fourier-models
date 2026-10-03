@@ -1,10 +1,8 @@
-# import-mlflow — the paper's MLflow runs, in the engine
+# import-mlflow — archived MLflow runs in the engine
 
-The paper's figures were drawn from MLflow runs made under kedro, before the
-studies were flows. `run.py` imports exactly those runs, so the figures can be
-redrawn from the engine like any native run. Which runs they are is fixed by the
-CSVs the R plots were built from: the `run_id` column of `study-N.csv` at the
-repo root (gitignored, like the MLflow stores).
+`run.py` imports archived runs into the corresponding flows so their figures
+can be regenerated from the engine. The `run_id` column of each root
+`study-N.csv` selects the runs. These CSVs and the MLflow stores are gitignored.
 
 | CSV | flow | runs | MLflow store |
 | --- | --- | --- | --- |
@@ -14,7 +12,7 @@ repo root (gitignored, like the MLflow stores).
 | `study-4.csv` | `train` | 510 | `mlruns_paper/513065903306889723` (`study-4-8`), imported |
 
 Each run becomes a run of its flow with `cause` "import", its MLflow `run_id`
-as `external_id`, the label `paper`, and the MLflow start and end as its times:
+as `external_id`, and the MLflow start and end as its times:
 
 - **inputs**: `<group>.<name>` is `<name>`, except `model.seed`, `data.seed`,
   `<study>.seed` (`model_seed`, `data_seed`, `sample_seed`), the
@@ -34,7 +32,7 @@ as `external_id`, the label `paper`, and the MLflow start and end as its times:
 
 Not imported: artifacts (`model.txt`, `time_domain.html`), and what the flows
 report that MLflow never recorded (`dataset_info`, the solver and summary in
-`model_spec`, `trained_model`). `docs/DECISIONS.md` D9–D11 give the reasons.
+`model_spec`, `trained_model`).
 
 ## How to run it
 

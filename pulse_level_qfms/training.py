@@ -1,9 +1,7 @@
-"""Fitting a model to its target series, and what the fit reports on the way.
+"""Fit models to target series and stream training metrics.
 
-The optimisation is a generator: every step publishes its loss and its scaler
-statistics the moment they exist, so a run's curve is visible while it is
-still being drawn, and the node that wraps it does nothing but move artifacts
-in and out.
+The optimizer yields each step's loss and scaler statistics as they become
+available.
 """
 
 import logging
@@ -39,12 +37,7 @@ SCALER_PORTS = tuple(
 
 
 def jsonable(value):
-    """A record a `json` port will accept: no NaN, no infinity.
-
-    A subset with nothing in it produces one, and a port refuses it rather
-    than storing a number that is not one. ``None`` says the same thing and
-    travels.
-    """
+    """Replace non-finite numbers with ``None`` for JSON ports."""
     if isinstance(value, dict):
         return {key: jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -65,12 +58,7 @@ def train_mse(
     enc_pulse_params: Optional[jnp.ndarray] = None,
     enc_params: Optional[jnp.ndarray] = None,
 ) -> float:
-    """The time-domain error of the model on the training grid.
-
-    Only the time domain is reported: once the target carries off-grid
-    frequencies, its coefficients and the model's live on different supports
-    and a coefficient-space comparison is not defined.
-    """
+    """Compute training-grid MSE, including for off-grid targets."""
     call_kwargs = dict(
         params=model.params,
         inputs=x,
@@ -96,37 +84,24 @@ def jacobian_rank(
     argnums: Tuple[int, ...],
     tol_rel: float,
 ) -> Tuple[int, float, Tuple[int, ...]]:
-    """Compute the numerical rank of the Jacobian of the Fourier coefficients
-    of *model* w.r.t. the parameter groups indicated by *argnums*.
+    """Compute Fourier-coefficient Jacobian rank for selected parameter groups.
 
-    The Fourier coefficients are stacked into a real vector
-    ``[Re(c_\\omega), Im(c_\\omega)]`` so the resulting Jacobian is a real
-    ``(2|\\Omega|, |params|)`` matrix from which a meaningful rank can be
-    obtained via SVD.  ``tol_rel`` is multiplied with the largest
-    singular value to obtain the cutoff used for the numerical rank
-    estimate (matches ``numpy.linalg.matrix_rank``'s default policy).
+    Stack real and imaginary coefficients before differentiation. The SVD
+    cutoff is ``tol_rel`` times the largest singular value.
 
     Args:
-        model: Already-instantiated quantum Fourier model.
-        theta: Unitary parameter vector ``\\theta`` (shape as in ``model.params``).
-        lam: Ansatz pulse-scaling parameter vector ``\\lambda`` (shape as in
-            ``model.pulse_params``).
-        eta: Encoding pulse-scaling parameter vector ``\\eta`` (shape as in
-            ``model.enc_pulse_params``).
-        gate_mode: ``"unitary"``, ``"ansatz_pulse"``, ``"enc_pulse"`` or
-            ``"all_pulse"``
-        argnums: Subset of ``(0, 1, 2)`` indicating which arguments to
-            differentiate w.r.t. — ``(0,)`` gives ``J_\\theta``, adding the
-            argnums of the groups the mode runs at pulse level gives
-            ``J_ext``.
-        tol_rel: Relative tolerance for the numerical rank.
+        model: Quantum Fourier model.
+        theta: Unitary parameters.
+        lam: Ansatz pulse scalers.
+        eta: Encoding pulse scalers.
+        gate_mode: Gate execution mode.
+        argnums: Parameter groups to differentiate: 0 for ``theta``, 1 for
+            ``lam``, and 2 for ``eta``.
+        tol_rel: Relative SVD cutoff.
 
     Returns:
-        Tuple ``(rank, sv_min_above_tol, jacobian_shape)`` — ``rank`` is
-        the integer numerical rank, ``sv_min_above_tol`` is the smallest
-        singular value above the cutoff (or ``0.0`` when the matrix is
-        zero) and ``jacobian_shape`` records the flattened Jacobian
-        shape for diagnostics.
+        Rank, smallest singular value above cutoff (zero for a zero matrix),
+        and flattened Jacobian shape.
     """
     groups = PULSE_GROUPS[gate_mode]
 
@@ -190,27 +165,22 @@ def jacobian_ranks(
     gate_mode: str,
     tol_rel: float,
 ) -> Dict[str, float]:
-    """``rank J_theta`` and, where the mode has pulse scalers, ``rank J_ext``.
+    """Compute Jacobian ranks for unitary and active pulse parameters.
 
-    A non-zero ``delta r = rank J_ext - rank J_theta`` certifies that the
-    pulse-scaling parameters provide new search directions in
-    Fourier-coefficient space beyond what the unitary parameters alone can
-    reach.
+    ``r_ext - r_theta`` counts new coefficient-space directions from pulse
+    scalers. The unitary mode has no extended rank.
 
     Args:
         model: The model whose autodiff is exercised.
         theta: Current unitary parameters.
         lam: Current ansatz pulse-scaling parameters.
         eta: Current encoding pulse-scaling parameters.
-        gate_mode: The regime in which ranks are evaluated. ``J_ext`` extends
-            ``J_theta`` by exactly the scaler groups the mode runs at pulse
-            level, so it is reported for every mode except ``"unitary"``,
-            which has no such group.
+        gate_mode: Mode selecting the active pulse scaler groups.
         tol_rel: Relative SVD cutoff used for the numerical rank.
 
     Returns:
-        Dict[str, float]: ``r_theta`` and ``sv_theta``, plus ``r_ext`` and
-        ``sv_ext`` once the mode runs a scaler group at pulse level.
+        ``r_theta`` and ``sv_theta``; also ``r_ext`` and ``sv_ext`` when
+        pulse scalers are active.
     """
     log.info(f"Computing Jacobian ranks (gate_mode={gate_mode}) ...")
     # jacobian_rank restores the model's parameter attributes itself

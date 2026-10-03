@@ -1,4 +1,4 @@
-"""s3 -- figures, and the paper's study-3.csv, from the finished `expressibility` runs.
+"""s3 -- figures and study-3.csv from finished `expressibility` runs.
 
     dev/serve.sh &
     uv run python dev/s3-expressibility/figures.py
@@ -19,7 +19,7 @@ SELECT = {}
 if __name__ == "__main__":
     df = table("expressibility", **SELECT)
     FIGURES.mkdir(exist_ok=True)
-    # the table the paper's R plots were built from
+    # export the run table for further analysis
     df.to_csv(FIGURES / "study-3.csv", index=False)
     viz.save(
         {"expressibility": viz.expressibility_over_distortion(df, show_error=True)},

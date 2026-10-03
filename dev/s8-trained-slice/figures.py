@@ -3,8 +3,7 @@
     dev/serve.sh &
     uv run python dev/s8-trained-slice/figures.py
 
-Basin width and minima density are read off the slices where the thesis
-figures are drawn, from this table.
+Basin width and minima density are read from these exported slices.
 """
 
 from pathlib import Path

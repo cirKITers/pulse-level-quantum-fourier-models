@@ -1,13 +1,7 @@
-"""What every study's sweep does: submit a grid, bounded, and resume it.
+"""Submit bounded study grids and resume incomplete sweeps.
 
-A study is a grid of runs of one flow. The engine takes them all, but not at
-once: a driver keeps a fixed number in flight, writes down each cell as it
-lands, and on a second call submits only what is still missing. That makes an
-interrupted sweep something to re-run rather than something to reconstruct.
-
-Resume is checked twice. The driver's own results file is the fast answer,
-and the engine is the true one: a cell whose parameters already have a
-finished run is not submitted again, however the driver's file was lost.
+The driver records completed cells locally and checks the engine for finished
+runs before submitting missing parameter sets.
 """
 
 from __future__ import annotations
@@ -53,13 +47,7 @@ POLL_S = 10.0
 
 
 def client() -> Client:
-    """The engine this repo's store belongs to.
-
-    Reads the token out of `.fluksio/client.json` unless the environment
-    names one, which is what lets a shell export it once for a whole sweep.
-    The read timeout is generous on purpose: a busy engine answers slowly
-    long before it answers wrongly.
-    """
+    """Create a Fluksio client with environment credentials and a 300 s timeout."""
     url = os.environ.get("FLUKSIO_URL", "")
     token = os.environ.get("FLUKSIO_TOKEN", "")
     return Client(url=url, token=token, timeout=300.0)

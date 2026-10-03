@@ -1,15 +1,8 @@
-"""The model: how a study's circuit is built, stored and read back.
+"""Build, decompose, and transfer quantum Fourier models.
 
-One node, and the machinery it needs. :class:`DecomposedCircuit` rewrites a
-named ansatz into its basis-gate decomposition with a trainable scaler on
-every structural angle, and the save/load pair moves a built model between
-worker processes.
-
-A model is far too large and too awkward for a message, so it travels as a
-pickle artifact with a ``model_spec`` record beside it. The spec is not
-redundant: the pulse envelope, the rotating-wave approximation, the frame and
-the solver defaults are class-level state of :mod:`jaqsi`, which no pickle
-carries, so a consumer applies the spec before it unpickles anything.
+``DecomposedCircuit`` assigns trainable scalers to structural gate angles.
+Models travel between workers as pickle artifacts with a ``model_spec``;
+loading applies the pulse settings that the pickle cannot carry.
 """
 
 import logging
@@ -71,43 +64,19 @@ Evolution.set_solver_defaults(**SOLVER_DEFAULTS)
 
 @dataclass
 class LeafStep:
-    """A single leaf-level gate produced by flattening a
-    :class:`PulseParams` decomposition tree.
+    """One basis gate in a flattened pulse decomposition.
 
-    Two kinds of leaf steps exist:
+    Fixed steps scale a structural angle with a parameter initialized to one.
+    Free steps share the parent gate's rotation parameter through
+    ``angle_chain``. Steps without a rotation angle set ``has_param=False``.
 
-    * **Fixed** (``is_fixed=True``): the decomposition angle is a structural
-      constant (e.g. ``π/2`` from a Hadamard).  The effective angle at
-      build time is ``scaler * fixed_value`` where ``scaler`` is a
-      trainable parameter initialised to ``1.0``.  At init the gate
-      reproduces the decomposition exactly.
-
-    * **Free** (``is_fixed=False``): the decomposition angle depends on
-      the *original* gate's rotation parameter ``w`` via a composed
-      ``angle_chain``.  At build time the angle is ``angle_chain(w_orig)``
-      where ``w_orig`` is the **single** trainable parameter (or triple,
-      for :class:`Rot`) associated with the parent block -- it is
-      *shared* across all free steps of the same decomposition.
-
-    * **No-param** (``has_param=False``): leaf gate carries no rotation
-      angle (e.g. ``CZ``/``CX`` when they appear as basis gates).
-
-    Attributes
-    ----------
-    gate_name : str
-        Basis gate name (e.g. ``"RZ"``, ``"CPhase"``).
-    wire_fn : str
-        Wire selector ``"all"`` / ``"target"`` / ``"control"``.
-    has_param : bool
-        Whether this gate takes a rotation angle argument.
-    is_fixed : bool
-        True ⇒ angle = scaler * fixed_value.  False ⇒ angle =
-        angle_chain(w_orig).
-    fixed_value : float
-        Structural constant for fixed steps.  Unused otherwise.
-    angle_chain : Optional[Callable]
-        Composition of all parent ``angle_fn``s for free steps, mapping
-        the original gate's ``w`` to this leaf's rotation angle.
+    Attributes:
+        gate_name: Basis gate name.
+        wire_fn: ``"all"``, ``"target"``, or ``"control"``.
+        has_param: Whether the gate takes a rotation angle.
+        is_fixed: Whether the angle uses ``fixed_value`` and a scaler.
+        fixed_value: Structural angle of a fixed step.
+        angle_chain: Map from the parent rotation to a free step's angle.
     """
 
     gate_name: str
@@ -121,15 +90,10 @@ class LeafStep:
 def _flatten_decomposition(
     pp, parent_wire_fn: str = "all", angle_chain: Optional[Callable] = None
 ) -> List[LeafStep]:
-    """Walk a :class:`PulseParams` tree top-down and emit leaf-level steps.
+    """Flatten a ``PulseParams`` tree into basis-gate steps.
 
-    ``angle_chain`` is the composition of all ``angle_fn`` encountered on
-    the path from the root; probing it at two distinct ``w`` values tells
-    us whether the effective angle is a structural constant (*fixed*) or
-    still depends on the parent's ``w`` (*free*).  For free steps the
-    chain itself is stored so that :meth:`DecomposedCircuit.build` can
-    reproduce the original ``w`` → leaf-angle mapping with a single
-    shared ``w`` per parent block.
+    Probe the composed ``angle_chain`` at two values to distinguish fixed
+    angles from those driven by the parent's shared rotation parameter.
     """
     # Leaf: emit a LeafStep.
     if pp.is_leaf:
@@ -209,26 +173,12 @@ def _resolve_wires(wire_fn: str, wires) -> Union[int, list]:
 
 
 class DecomposedCircuit(Circuit):
-    """A :class:`Circuit` whose gates are replaced by their basis-gate
-    decomposition derived from :class:`PulseInformation`.
+    """Circuit with basis-gate decompositions from ``PulseInformation``.
 
-    Layout per wire-set of an originally parameterised block
-    (``RX``/``CRX``/``Rot``/…):
-
-    * ``n_w_orig`` **free** slots carry the original gate's rotation
-      parameter(s) -- exactly as many as the un-decomposed gate would
-      have consumed (1 for rotation gates, 3 for :class:`Rot`).  They
-      are randomly initialised by :class:`Model` and are shared across
-      *all* free leaf steps through the stored ``angle_chain``.
-    * One **scaler** slot per *fixed* leaf step, initialised to ``1.0``,
-      so that the effective angle is ``scaler * fixed_value``.
-
-    At initialisation (all scalers == 1.0) the decomposed block is
-    functionally identical to the original one: a CRX(w) decomposes into
-    one random ``w`` plus two scalers for ``±π/2`` -- i.e. still a CRX.
-
-    For non-parameterised originals (H, CX, CY, CZ) only the scaler
-    slots exist.
+    Each original rotation keeps its shared parameter slots. Each fixed
+    decomposition angle gains a trainable scaler initialized to one, so the
+    initial circuit implements the original gates. Gates without original
+    parameters have only scaler slots.
     """
 
     def __init__(self, circuit_type: str, n_qubits: int) -> None:

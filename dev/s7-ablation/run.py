@@ -1,17 +1,8 @@
-"""s7 -- training on an off-grid target, with the encoding at pulse level.
+"""s7: compare encoding pulse training with gate-level training.
 
-Two blocks over the `train_enc` flow.
-
-The ablation block is one ansatz, one target, and the training changed one
-thing at a time. The floor arms train on an on-grid target, where the
-unitary parameters already reach every component, so whatever the pulse arm
-gains there is not reachability. The rest separate initialisation, the
-trainable-frequency knob and the learning rate from the pulse scalers
-themselves.
-
-The ansatz block asks whether the encoding pulse scalers reach frequencies
-the unitary parameters cannot, so every ansatz is trained twice from the
-same data seed: once with the encoding at gate level and once at pulse level.
+The ablation block varies one factor at a time for one ansatz, including an
+on-grid target as a reachability control. The ansatz block trains each ansatz
+twice from the same data seed to measure access to off-grid frequencies.
 
     dev/serve.sh &
     uv run python dev/s7-ablation/run.py --jobs 1
@@ -24,7 +15,7 @@ from pulse_level_qfms.sweep import CIRCUITS, SEEDS, main
 #: This study's own record of the sweep.
 OUT = Path(__file__).resolve().parent / "results" / "driver.json"
 
-#: The depth both blocks run at, which is not the paper's (docs/DECISIONS.md D5).
+#: Both blocks use two layers.
 PINNED = {"n_layers": 2}
 
 #: Shared by every ablation arm, so a difference between two rows is the arm.

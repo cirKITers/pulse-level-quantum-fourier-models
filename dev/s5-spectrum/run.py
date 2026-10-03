@@ -11,7 +11,7 @@ from pulse_level_qfms.sweep import CIRCUITS, SEEDS, VARIANCES, main
 #: This study's own record of the sweep.
 OUT = Path(__file__).resolve().parent / "results" / "driver.json"
 
-#: The depth this study runs at, which is not the paper's (docs/DECISIONS.md D5).
+#: This study uses two layers.
 PINNED = {"n_layers": 2}
 
 

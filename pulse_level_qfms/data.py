@@ -1,9 +1,7 @@
-"""The target series a study trains on, and how it travels.
+"""Generate, store, and load target Fourier series.
 
-One node, and the two helpers that move its arrays. The series is built from
-the `Datasets` primitives rather than from `Datasets.generate_fourier_series`,
-so the target frequencies are a result in their own right and the domain can
-be oversampled independently of the number of components.
+Build series from ``Datasets`` primitives so target frequencies are recorded
+and domain oversampling is independent of the component count.
 """
 
 import io
@@ -38,11 +36,9 @@ def load_dataset(ref: Dict) -> Dict[str, np.ndarray]:
 def batches(
     x: np.ndarray, y: np.ndarray, batch_size: int
 ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-    """Walk the training set once, in order.
+    """Yield the training grid in order, without shuffling.
 
-    A batch size below one is the whole set, which is what every study runs.
-    Nothing is shuffled: the domain samples are a grid, and the target is a
-    function of where on it they sit.
+    A batch size below one yields the full set.
     """
     if batch_size < 1:
         batch_size = x.shape[0]
@@ -87,15 +83,14 @@ def generate_fourier_series(
     offgrid_prob: float,
     offgrid_resolution: int,
 ) -> Dict:
-    """Draw the target Fourier series on the model's own frequency comb.
+    """Draw a target series from the model's frequency comb.
 
-    Which frequencies the target carries is the study's independent variable
-    under ``offgrid_mode="generator"``, so they and the scalers that reach
-    them are recorded rather than left to be inferred from the arrays.
+    Record the target frequencies and their scalers, which vary under
+    ``offgrid_mode="generator"``.
     """
     circuit = load_model(model, model_spec)
     # An on-grid target draws its coefficients from the seed's own key, as
-    # `Datasets.generate_fourier_series` does and so the paper's study 4 did.
+    # `Datasets.generate_fourier_series` does.
     # Only an off-grid target needs a second key, to displace frequencies with.
     key = jax.random.PRNGKey(data_seed)
     if offgrid_mode == "none":

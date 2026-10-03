@@ -1,4 +1,4 @@
-"""s4 -- the paper's study 4: training, with and without pulse-level parameters.
+"""s4 -- train with unitary, decomposed, and pulse-level parameters.
 
 Every ansatz is trained on a Fourier series drawn on its own frequency comb,
 in three arms: as a unitary circuit, decomposed into basis gates with a
@@ -16,12 +16,12 @@ from pulse_level_qfms.sweep import CIRCUITS, SEEDS, main
 #: This study's own record of the sweep.
 OUT = Path(__file__).resolve().parent / "results" / "driver.json"
 
-#: (gate_mode, decompose_circuit) of each arm. "ansatz_pulse" is the paper's
-#: train_pulse=True; a decomposed circuit only trains as a unitary.
+#: (gate_mode, decompose_circuit) of each arm. A decomposed circuit trains
+#: as a unitary.
 ARMS = [("unitary", False), ("unitary", True), ("ansatz_pulse", False)]
 
-#: What the paper's runs recorded where the flow defaults say otherwise
-#: (docs/DECISIONS.md D6). The frame is ignored under the rotating-wave
+#: The archived runs recorded this value instead of the flow default.
+#: The frame is ignored under the rotating-wave
 #: approximation, but it is part of the parameter set all the same.
 PINNED = {"frame": "lab"}
 

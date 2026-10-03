@@ -1,12 +1,7 @@
-"""The loss landscape along an encoding scaler, one curve per gate.
+"""Measure loss landscapes along individual encoding pulse scalers.
 
-Training the encoding scalers is a frequency estimation problem: the scaler
-of a gate multiplies its generator, so the loss along it is the misfit
-between a detuned comb and the target. That misfit oscillates with a period
-set by the generator and the window length, which puts a local minimum on
-every sidelobe and shrinks the basin around the aligned scaler in proportion
-to the generator. Sweeping one gate at a time resolves that per spectral
-component, which is what the per-gate curves report.
+Each scaler shifts a gate's frequency comb. The loss oscillation period and
+basin width depend on that gate's generator and the sample window.
 """
 
 import logging
@@ -30,14 +25,10 @@ log = logging.getLogger(__name__)
 
 def _encoding_gates(model: Model, feature: int = 0) -> List[Tuple[int, int, float]]:
     """
-    The encoding gate instances of one input feature and their generators.
+    Find encoding gates and generators for one input feature.
 
-    Every position the data re-upload mask marks is one encoding gate, and each
-    of them carries its own scaler. Which frequency a gate contributes follows
-    from the encoding strategy, where qubit $q$ is driven at
-    $\\text{base}^q$ with base 1, 2 or 3 for hamming, binary and ternary. Two
-    gates can therefore share a generator, either across layers or, under
-    hamming, across qubits as well.
+    Qubit $q$ has generator $\\text{base}^q$, with base 1, 2, or 3 for
+    hamming, binary, or ternary encoding. Gates may share a generator.
 
     Args:
         model (Model): The QFM model.
@@ -117,20 +108,11 @@ def _sweep_grid(
 
 def _profile_mse(x: np.ndarray, y: np.ndarray, support: np.ndarray) -> float:
     """
-    Loss of the best real Fourier fit on `support`, i.e. the loss with the
-    coefficients concentrated out.
+    Compute the least-squares loss for a real Fourier fit on ``support``.
 
-    This is the separable (variable projection) view of the problem: the
-    coefficients enter linearly and are solved for in closed form, leaving a
-    cost that depends on the frequencies alone. In classical spectral
-    estimation this concentrated cost is what carries the sidelobe minima, and
-    it is the quantity an optimizer would see if its linear parameters always
-    caught up with the current frequencies.
-
-    Being a relaxation, it is a lower bound on what the model can reach: it
-    lets every component carry a free coefficient, which the variational
-    parameters do not. It also steps up at the isolated scalers where two
-    components coincide exactly, because the fit loses a direction there.
+    Solving for free coefficients leaves a cost over frequencies alone. This
+    relaxes the model's parameterization and provides a lower bound on its loss.
+    Coincident components reduce the fit rank and can raise the loss.
 
     Args:
         x (np.ndarray): Domain samples of shape (n_points,).
@@ -161,12 +143,9 @@ def _pulse_sweep(
     chunk: int,
 ) -> np.ndarray:
     """
-    Evaluate the loss over the scaler grid with the encoding gates at pulse
-    level.
+    Evaluate pulse-level loss over the scaler grid in padded batches.
 
-    The grid is pushed through the encoding pulse batch axis rather than a
-    Python loop, so one call covers `chunk` scalers at once. Blocks are padded
-    to a constant size to keep a single compiled shape.
+    Each model call covers ``chunk`` scalers with a fixed compiled shape.
 
     Args:
         model (Model): The QFM model.
@@ -236,25 +215,12 @@ def _trained_sweeps(
     learning_rate: float,
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, List[float]]]:
     """
-    Evaluate the loss over the scaler grid of every gate with the ansatz
-    trained along the sweep.
+    Train the ansatz along each gate's scaler grid and record its loss.
 
-    The ansatz is first fitted at the target scalers for `fit_steps` Adam
-    steps, from the parameters the fixed slice holds and from `fit_starts`
-    random draws of $\\theta$, keeping the best fit: $\\theta$ under
-    ``gate_mode="enc_pulse"``, $\\theta$ and the trainable-gate pulse scalers
-    $\\kappa$ (from ones) under ``"all_pulse"``. Each slice then continues from
-    that fit outward from the target scaler to both ends of its grid and back,
-    every point starting from its neighbour's parameters and taking `steps`
-    steps with a fresh optimizer.
-
-    A local fit is path dependent: moving the scalers can lead the parameters
-    out of a poor optimum, and a slice that keeps improving along the way
-    records the optimizer's progress rather than the landscape. So the best
-    chain returning to the target is fitted there once more, and while that
-    lowers the target loss by more than a percent the sweep is repeated from
-    it, for at most `rounds` rounds. Every point keeps the lowest loss any pass
-    reached. Without any steps this is the fixed slice.
+    Fit at the target scalers from the fixed slice and ``fit_starts`` random
+    starts. Continue outward and back, initializing each point from its
+    neighbor. Repeat from an improved target fit for at most ``rounds`` rounds;
+    retain the best loss at each point. With no steps, return the fixed slice.
 
     Args:
         model (Model): The QFM model.
@@ -391,18 +357,10 @@ def _profile_grid(
     mts: int,
 ) -> Tuple[np.ndarray, np.ndarray, int]:
     """
-    Dense domain grid for the concentrated fit, with the target re-evaluated
-    on it.
+    Build a dense domain grid and re-evaluate the target for the profile fit.
 
-    The concentrated fit assigns a free coefficient to every comb component,
-    so it is only meaningful while the domain carries more samples than fit
-    parameters. The training grid guarantees that for the nominal comb, but a
-    detuned multi-layer comb inflates past it: the number of distinct
-    components approaches $3^{n_\\text{gates}}$, and the swept lines exceed
-    the Nyquist frequency of the grid. Both are cured by raising the sample
-    density within the same window, i.e. `mfs`. The window itself, and with it
-    the Dirichlet resolution that shapes the landscape, is set by `mts` and is
-    deliberately left untouched.
+    Increase ``mfs`` so detuned combs have enough samples and stay below
+    Nyquist. Keep the ``mts`` window length, which sets Dirichlet resolution.
 
     Args:
         model (Model): The QFM model.
@@ -470,17 +428,11 @@ def _analytic_mse(
     n_samples: int,
 ) -> np.ndarray:
     """
-    Closed-form approximation of the concentrated loss over the sweep.
+    Approximate concentrated loss with independent Dirichlet residuals.
 
-    Treats every target component independently: a component of power $p$ at
-    distance $\\delta$ from the nearest comb line retains the energy
-    $p \\, (1 - |D(\\delta)|^2)$ in the residual, with $D$ the Dirichlet
-    kernel of the sample window. Summing over components gives the classical
-    multi-tone estimation cost, which matches the concentrated loss while the
-    components stay separated by more than a kernel lobe and shares its
-    geometry everywhere: oscillation period $1/(mts \\, \\gamma)$ along the
-    scaler of a gate driving the generator $\\gamma$, main lobe of width
-    $2/(mts \\, \\gamma)$ around the aligned scaler.
+    A component with power $p$ and distance $\\delta$ from the nearest comb
+    line contributes $p \\, (1 - |D(\\delta)|^2)$. The approximation is most
+    accurate when components are separated by more than a kernel lobe.
 
     Args:
         supports (List[np.ndarray]): The comb at every point of the sweep.
@@ -539,12 +491,7 @@ def _verify_landscape(
     slot: int,
 ) -> float:
     """
-    Check the two assumptions the sweep rests on.
-
-    The comb is enumerated from the encoding generators rather than read off
-    the model, so at unit scalers it has to reproduce the model's own comb. And
-    the scalers are swept at pulse level, which only stands in for a frequency
-    scaling while the calibrated pulses reproduce their gates.
+    Verify that enumerated comb and calibrated pulses match the unitary model.
 
     Args:
         model (Model): The QFM model.
@@ -627,32 +574,13 @@ def sweep_landscape(
     gate_mode: str = "enc_pulse",
     eta_window: float = 0.0,
 ) -> Tuple[Dict, Dict[str, Dict[str, np.ndarray]]]:
-    """Sweep the scaler of every encoding gate and report the three curves,
-    four once the ansatz is trained along the sweep.
+    """Sweep each encoding scaler while holding the others at their targets.
 
-    Curves per gate:
-
-    - `profile`, the loss with the coefficients concentrated out, see
-      :func:`_profile_mse`. This is the landscape of the frequencies alone and
-      reaches zero wherever the comb covers the target support. It is
-      evaluated on a sample grid dense enough for the detuned comb, see
-      :func:`_profile_grid`. Gates that share a generator across layers make
-      the detuned comb locally denser than the window resolution, and a
-      cluster of sub-resolution lines spans every nearby sinusoid on the
-      finite window. The concentrated fit then tracks the target along most
-      of such a gate's slice, so for multi-layer models the alignment
-      structure is carried by `analytic` and `fixed` instead.
-    - `analytic`, the closed-form Dirichlet approximation of `profile`, see
-      :func:`_analytic_mse`.
-    - `fixed`, the loss at the current variational parameters on the training
-      grid, i.e. the slice the optimizer sees before its coefficients adapt.
-    - `trained`, with ``steps > 0``: the same loss with the ansatz trained
-      along the sweep, see :func:`_trained_sweeps`. It lies between `fixed`
-      and `profile` as far as the ansatz can realize the free coefficients.
-
-    The remaining gates are held at their target scalers, so each slice
-    contains the aligned configuration and the path from the initial scaler
-    ``eta = 1`` to it.
+    Return per-gate ``profile`` loss with free Fourier coefficients,
+    ``analytic`` Dirichlet approximation, and ``fixed`` loss at current model
+    parameters. With ``steps > 0``, also return ``trained`` loss after fitting
+    along the sweep. Shared generators can make a multilayer profile nearly
+    flat; ``analytic`` and ``fixed`` retain the alignment structure.
 
     Args:
         model (Model): The QFM model, which must use a hamming, binary or

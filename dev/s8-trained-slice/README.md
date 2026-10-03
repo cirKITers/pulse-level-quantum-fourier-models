@@ -23,13 +23,13 @@ at the target, because that fit had stalled in a poor optimum (C15 at seed
 start). Neither version records the target loss of every round, and
 `figures.py` leaves their runs out.
 
-102 runs of the `landscape` flow: the 16 ansaetze of the thesis' fixed slices
+102 runs of the `landscape` flow: 16 ansaetze from the fixed-slice grid
 (C9's flat $\gamma = 3$ slice drops out of the statistics) $\times$ 3 seeds
 (1000 to 1002, `model_seed = data_seed`) $\times$ 2 gate modes (`enc_pulse`
 trains $\theta$, `all_pulse` $\theta$ and $\kappa$), plus C15, C3 and C10 at
 seed 1000 with three times the continuation steps, in both modes, to see
-whether 20 steps per scaler are enough. Everything else is the thesis'
-fixed-slice sweep: one layer, ternary encoding on three qubits, `mts=4`,
+whether 20 steps per scaler are enough. The shared fixed-slice settings are
+one layer, ternary encoding on three qubits, `mts=4`,
 `offgrid_resolution=4`, 20 points per oscillation. Each gate's grid keeps the
 stretch from $\eta = 1$ to its target plus three oscillation periods on
 either side (`eta_window=3`), which holds everything basin width and minima

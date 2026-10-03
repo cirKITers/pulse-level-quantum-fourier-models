@@ -1,19 +1,7 @@
-"""Unit tests for the Jacobian-rank diagnostics introduced for
-the manuscript TODO at line 757 of main.tex.
+"""Check Fourier-coefficient Jacobian ranks on a small model.
 
-The diagnostics compute
-
-* ``rank J_θ`` — Jacobian of the (real-stacked) Fourier coefficients
-  w.r.t. the unitary parameters θ alone.
-* ``rank J_ext`` — Jacobian w.r.t. the extended parameters, i.e. θ plus
-  the pulse-scaling groups the gate mode runs at pulse level: λ for the
-  ansatz, η for the encoding, or both.
-* ``Δr = rank J_ext − rank J_θ`` — the count of *additional* search
-  directions in coefficient space unlocked by those scalers.
-
-These tests check the helper itself (shape, finite values,
-consistency with the manuscript's bounds) on a tiny model so they
-stay well below 1 minute end-to-end.
+The tests cover unitary rank, rank extended by active pulse scaler groups,
+and the added coefficient-space directions implied by their difference.
 """
 import jax
 import jax.numpy as jnp

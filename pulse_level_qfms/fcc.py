@@ -1,10 +1,7 @@
-"""Fourier coefficient concentration, and the spectrum it is measured on.
+"""Measure Fourier coefficient concentration and the sampled spectrum.
 
-`PulseFCC` extends the library's `FCC` with a ``sample_axis``: which of the
-unitary parameters, the ansatz pulse scalers and the encoding pulse scalers
-are randomised across the samples, drawn jointly rather than as an outer
-product. Which of the four pulse regimes the model runs in follows from that
-choice.
+``PulseFCC`` jointly samples the parameter groups selected by ``sample_axis``.
+The selected pulse groups determine the gate mode unless one is specified.
 """
 
 import logging
@@ -27,14 +24,10 @@ log = logging.getLogger(__name__)
 
 
 def frequency_key(frequency: float) -> str:
-    """What a frequency is called inside the coefficient record.
+    """Encode a frequency as a record key with no dots.
 
-    A record's keys are strings, and this one is read back through
-    `fluksio export runs --metrics coefficients.mean.<key>`, which addresses
-    a nested field by a dotted path. A key holding a dot would be read as two
-    levels of nesting and come back empty, so the decimal point is written as
-    an underscore: -1.0 is `-1_0`, and the quarter-integer grid the spectrum
-    study samples on is `0_25`.
+    Fluksio treats dots as nested-field separators, so ``-1.0`` becomes
+    ``-1_0``.
     """
     return f"{float(frequency)}".replace(".", "_")
 
@@ -65,51 +58,29 @@ class PulseFCC(FCC):
         stats: Optional[Dict] = None,
         **kwargs,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        """
-        Calculates the Fourier coefficients of a given model
-        using `n_samples` and `seed`.
+        """Sample the model's Fourier coefficients and frequency spectrum.
 
         Args:
-            model (Model): The QFM model
-            n_samples (int): Number of samples to calculate average of coefficients
-            seed (int): Seed to initialize random parameters
-            scale (bool, optional): Whether to scale the number of samples.
-                Defaults to False.
-            sample_axis (List[str], optional): Which quantities are randomised
-                across the samples, a subset of "unitary" (the variational
-                parameters $\\theta$), "pulse" (the ansatz pulse scalers
-                $\\lambda$) and "enc_pulse" (the encoding pulse scalers
-                $\\eta$). Entries are matched exactly, so "pulse" does not
-                select "enc_pulse". All selected quantities are drawn jointly,
-                i.e. sample $j$ is one draw of every selected quantity rather
-                than an outer product over them. The four pulse regimes are
-                selected by which pulse groups appear here: none gives
-                "unitary", "pulse" gives "ansatz_pulse", "enc_pulse" gives
-                "enc_pulse" and both give "all_pulse".
-            gate_mode (Optional[str], optional): Gate execution backend used
-                for the coefficient calculation, one of "unitary",
-                "ansatz_pulse", "enc_pulse" or "all_pulse". Defaults to None,
-                in which case it is derived from `sample_axis` as the mode
-                that runs exactly the sampled pulse groups. Pass it explicitly
-                only to run a group at pulse level without perturbing it,
-                which differs from the unitary result only once the pulses are
-                detuned or noise is enabled. A pulse entry in `sample_axis`
-                that the mode does not run at pulse level is ignored with a
-                warning.
-            pulse_params_variance (float, optional): Variance of the pulse
-                scalers. If this is set to 0.0, the pulse parameters are not
-                distorted, i.e. the simulation runs with default pulse
-                parameters.
-            stats (Optional[Dict], optional): Filled in with the per-frequency
-                mean and variance of the coefficient magnitudes, which is the
-                spectrum the studies report. `get_fourier_fingerprint` trims
-                the coefficients it returns, so a caller that wants the whole
-                spectrum has to be handed it from in here.
+            model (Model): Quantum Fourier model.
+            n_samples (int): Number of parameter samples.
+            seed (int): Random seed.
+            scale (bool): Whether to scale the sample count by model size.
+            sample_axis (List[str]): Groups to sample jointly: ``"unitary"``
+                (variational parameters), ``"pulse"`` (ansatz scalers), and
+                ``"enc_pulse"`` (encoding scalers).
+            gate_mode (Optional[str]): Execution mode. If omitted, derive it
+                from the selected pulse groups. Explicit modes may run an
+                unsampled pulse group; sampled groups excluded by the mode
+                are ignored with a warning.
+            pulse_params_variance (float): Variance of pulse scalers; zero
+                leaves them at their defaults.
+            stats (Optional[Dict]): If provided, receive the full per-frequency
+                mean and variance of coefficient magnitudes.
             **kwargs: Additional keyword arguments for the model function.
 
         Returns:
             Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: Parameters,
-            coefficients of size NxK and the corresponding frequencies.
+            sampled coefficients, and frequencies.
         """
         if gate_mode is None:
             # the sampled pulse groups fully determine the regime, so there is

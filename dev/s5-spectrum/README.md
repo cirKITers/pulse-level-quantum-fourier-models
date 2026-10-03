@@ -7,9 +7,8 @@ a frequency shift distinguishable from a change in amplitude.
 
 **1530 runs** of the `spectrum` flow: 17 ansaetze × 9 pulse scaler variances
 (0 to 0.008) × 10 sample seeds (1000–1009), at `n_layers=2`, which the driver
-pins because the flow default is the paper's single layer
-(`docs/DECISIONS.md` D5). Samples are drawn jointly over the unitary
-parameters and the encoding pulse scalers.
+pins because the flow default uses one layer. Samples are drawn jointly over
+the unitary parameters and the encoding pulse scalers.
 
 ## How to re-run it
 

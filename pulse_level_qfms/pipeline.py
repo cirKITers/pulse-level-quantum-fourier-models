@@ -1,29 +1,9 @@
-"""The flows, each named by what it computes.
+"""Declare the computation flows used by the study drivers.
 
-A study is a driver over one flow (``dev/<study>/run.py``): it varies its own
-axis over a grid of runs of that flow. The nodes the flows share -- the model,
-the target series -- are the same functions in every flow, wired by name.
-
-    dev/serve.sh                                      # the engine, once
-    uv run fluksio sync pulse_level_qfms              # upload the flows
-    uv run fluksio run fcc --circuit_type Circuit_15 --wait
-    uv run python dev/s1-fcc/run.py --jobs 15         # the whole grid
-
-Input defaults are the paper's, as ``conf/base/parameters.yml`` on ``main``
-states them. An input the paper did not have keeps the value its study
-introduced it with, and a study that ran at other values pins those in its
-driver.
-
-Declarations only: the nodes live in :mod:`pulse_level_qfms.model`,
-:mod:`pulse_level_qfms.data`, :mod:`pulse_level_qfms.fcc`,
-:mod:`pulse_level_qfms.spectrum`, :mod:`pulse_level_qfms.fidelity`,
-:mod:`pulse_level_qfms.expressibility`, :mod:`pulse_level_qfms.training` and
-:mod:`pulse_level_qfms.landscape`.
-
-Every flow reports ``model_spec``, which carries the parameter counts the
-plots read and the pulse configuration the run was built under. Streams are
-not outputs: a training curve is read with ``fluksio export metrics``, the
-final numbers with ``fluksio export runs``.
+Shared nodes live in their computation modules. Drivers set study-specific
+inputs over shared flow defaults. Every flow reports ``model_spec`` with
+parameter counts and pulse settings. Training curves are
+streamed metrics; final values are flow outputs.
 """
 
 from typing import List, Sequence
@@ -106,7 +86,7 @@ def data_inputs(on_grid: bool = False) -> List[Port]:
     independently, and "generator" displaces the per-gate generators, which
     is the only mode an encoding pulse configuration can reach.
 
-    ``on_grid`` gives the paper's target instead: the model's own comb over
+    ``on_grid`` draws the target on the model's own comb over
     one period, [0, 2π]. The off-grid inputs are still declared there, at
     values that leave them inert, because a flow cannot leave a node's port
     at the function default.
@@ -188,7 +168,7 @@ train = Flow(
     "train",
     title="Train a model on its own Fourier series",
     nodes=[generate_model, generate_fourier_series, train_model],
-    # "ansatz_pulse" is the paper's train_pulse=True
+    # train uses ansatz pulse scalers by default
     inputs=[
         *model_inputs(),
         *data_inputs(on_grid=True),

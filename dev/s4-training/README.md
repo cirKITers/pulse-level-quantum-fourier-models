@@ -1,6 +1,6 @@
 # s4 — Training
 
-The paper's study 4. Does training the pulse-level parameters of the ansatz, or
+Does training the pulse-level parameters of the ansatz, or
 the scalers of its basis-gate decomposition, fit a Fourier series better than
 the unitary parameters alone?
 
@@ -14,12 +14,12 @@ period, so every arm can represent it; the encoding stays unitary throughout.
 | decomposed | `unitary` | `true` |
 | ansatz pulse | `ansatz_pulse` | `false` |
 
-Everything else stays at the flow defaults, which are the paper's (3 qubits,
+Everything else stays at the flow defaults (3 qubits,
 1 layer, ternary `RY` encoding, 2000 steps at 1e-3, Jacobian ranks every 50
-steps), except `frame=lab`, which the paper's runs recorded although the
-rotating-wave approximation makes it inert (`docs/DECISIONS.md` D6).
+steps), except `frame=lab`, which the archived runs recorded although the
+rotating-wave approximation makes it inert.
 
-The paper's runs are the MLflow experiment `study-4-8`
+The archived runs are in the MLflow experiment `study-4-8`
 (`mlruns_paper/513065903306889723`, parameters and metrics only). Each of its
 510 parameter sets is exactly one cell of `run.py`, under this mapping:
 
@@ -35,7 +35,7 @@ The paper's runs are the MLflow experiment `study-4-8`
 `model.n_gate_params`, `model.n_pulse_params`, `model.n_decomposed_param_slots`
 and `model.n_scaler_params` are results (`model_spec`), and
 `train.train_unitary` was always `True`, which the flow does unconditionally.
-The inputs the paper had no parameter for sit at their inert on-grid defaults:
+Inputs absent from the archived runs use their inert on-grid defaults:
 `mts=1`, `mfs=1`, `offgrid_mode=none`, `offgrid_prob=0`, `offgrid_resolution=2`,
 `enc_pulse_init=ones`, `train_enc_params=false`.
 

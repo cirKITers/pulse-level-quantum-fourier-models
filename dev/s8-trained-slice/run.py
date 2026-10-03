@@ -19,17 +19,17 @@ from pulse_level_qfms.sweep import main
 #: This study's own record of the sweep.
 OUT = Path(__file__).resolve().parent / "results" / "driver.json"
 
-#: s6's ansatz block as the thesis ran it (one layer, ternary on three qubits,
-#: all flow defaults), within three oscillation periods of the stretch from
+#: Use s6's ansatz settings (one layer, ternary on three qubits, and the
+#: shared flow defaults), within three oscillation periods of the stretch from
 #: eta = 1 to the target. eta_max reaches past 2 so that a gamma = 1 target at
 #: 1.75 keeps its right flank. The ansatz is fitted at the target from five
 #: starts, then continued out and back with 20 Adam steps per scaler, for up
 #: to three rounds (the fit defaults of the flow).
 COMMON = {"offgrid_resolution": 4, "steps": 20, "eta_window": 3.0, "eta_max": 2.5}
 
-#: The sixteen ansaetze of the thesis' fixed slices, costliest first by pulse
+#: The sixteen ansaetze of the fixed-slice grid, costliest first by pulse
 #: parameter count, so the long all_pulse runs start early. C9's gamma = 3
-#: slice is flat and drops out of the statistics, as it does in the thesis.
+#: slice is flat and drops out of the statistics.
 CIRCUITS = [
     "Circuit_14",
     "Circuit_19",
@@ -49,7 +49,7 @@ CIRCUITS = [
     "Circuit_10",
 ]
 
-#: The seeds of the thesis' fixed slices.
+#: Seeds shared with the fixed-slice grid.
 SEEDS = [1000, 1001, 1002]
 
 #: Whether 20 steps per scaler is enough: three of the ansaetze once more at

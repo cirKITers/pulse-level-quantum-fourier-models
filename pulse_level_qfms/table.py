@@ -1,12 +1,7 @@
-"""A flow's finished runs, read from the engine as one table.
+"""Read finished flow runs into tables for study figures.
 
-One row per run: the inputs it was given, its final numbers and, for a
-training flow, its streamed curves as paired ``.steps`` / ``.values`` lists.
-The columns are the ones the paper's R plots were built from, i.e. what
-``generate_df`` on ``main`` read out of MLflow into ``study-N.csv``, so for
-s1–s4 this table is that CSV: ``ansatz`` for ``circuit_type``, ``model.seed``
-for ``model_seed``, ``<flow>.seed`` for ``sample_seed``, and so on.
-:mod:`pulse_level_qfms.viz` draws from it.
+Each row contains inputs, final metrics, and any streamed training curves.
+Column names follow the archived ``study-N.csv`` exports.
 """
 
 from collections import defaultdict
@@ -22,8 +17,8 @@ from pulse_level_qfms.sweep import client
 TRAINING = ("train", "train_enc")
 
 #: The streamed series, by the port that streams them, under their column name
-#: and in the paper's column order. A rank is measured every few steps, so its
-#: x is the training step `rank_step` names rather than the count of emissions.
+#: and in the archived CSV column order. Ranks are sampled every few steps,
+#: so their x-axis uses `rank_step` rather than the emission count.
 CURVES = {
     "train_mse": "train_mse",
     "pulse_scaler_mean": "pulse_scaler_mean",
@@ -37,7 +32,7 @@ CURVES = {
 }
 
 #: Runs per curve request. A trained run streams some 6000 points, and the
-#: export answers with one list (`docs/NOTEPAD.md`).
+#: export returns as one list.
 PAGE = 25
 
 
@@ -66,12 +61,7 @@ def table(flow: str, **filters: Any) -> pd.DataFrame:
 
 
 def _row(run: Dict[str, Any]) -> Dict[str, Any]:
-    """One exported run, under the paper's column names.
-
-    The order of the keys is the column order of ``study-N.csv``, which is the
-    order ``generate_df`` on ``main`` wrote them in; that is why fidelity's
-    columns come after ``decompose_circuit`` and the other flows' before it.
-    """
+    """Map an exported run to the archived CSV column names and order."""
     flow = run["flow"]
 
     def param(name: str) -> Any:
@@ -114,7 +104,7 @@ def _row(run: Dict[str, Any]) -> Dict[str, Any]:
 
     if flow in TRAINING:
         row["train_mse"] = metric("training.train_mse")
-        # the paper's `train.train_pulse`: some pulse scalers were trained
+        # true when the run trained pulse scalers
         row["train_pulse"] = param("gate_mode") != "unitary"
         if row["train_pulse"]:
             row["pulse_scaler_mean"] = metric("training.scalers.pulse.mean")

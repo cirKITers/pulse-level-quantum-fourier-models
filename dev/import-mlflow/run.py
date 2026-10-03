@@ -1,23 +1,16 @@
-"""The paper's MLflow runs, imported into the engine as runs of today's flows.
+"""Import archived MLflow runs into the corresponding Fluksio flows.
 
-The paper's figures were drawn from MLflow runs made under kedro. Which runs
-those are is fixed by the CSVs its R plots were built from: the `run_id`
-column of `study-1.csv` ... `study-4.csv` at the repo root. Each run is looked
-up by that id in an MLflow file store and becomes a run of the flow that
-computes the same thing today: its parameters mapped onto the flow's inputs,
-its final metrics onto the flow's outputs, its curves onto the node's streams.
-
-What has no counterpart today travels under `result.legacy`, beside the run's
-MLflow identity, so a row's provenance is on the row. Artifacts are not
-imported.
+Select runs by ``run_id`` in the root ``study-1.csv`` to ``study-4.csv``.
+Map parameters, final metrics, and curves to flow inputs, outputs, and streams.
+Store unmatched values under ``result.legacy`` with MLflow provenance.
+Artifacts are excluded.
 
     uv run python dev/import-mlflow/run.py --dry-run
     uv run python dev/import-mlflow/run.py 4
     uv run python dev/import-mlflow/run.py --mlruns /path/to/mlruns 1 2 3
 
-The engine answers an id it has already imported with `created: False` and
-keeps what it has, so a run is imported once: try a mapping on a throwaway
-store first.
+The engine keeps previously imported IDs, so check a mapping on a temporary
+store before importing it into the main store.
 """
 
 import argparse

@@ -9,8 +9,8 @@ questions are how the basin around the aligned scaler and the number of local
 minima on the way to it scale with the generator.
 
 **Two blocks** of the `landscape` flow, each cell with `model_seed = data_seed`
-over 10 seeds (1000–1009), all at `n_layers=2` (pinned, `docs/DECISIONS.md`
-D5), `mts=4` and `offgrid_resolution=4`, so the target sits between the comb
+over 10 seeds (1000–1009), all at `n_layers=2`, `mts=4` and
+`offgrid_resolution=4`, so the target sits between the comb
 lines rather than near one:
 
 | block | axis | cells |

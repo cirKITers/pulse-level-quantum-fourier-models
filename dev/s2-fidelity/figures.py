@@ -1,4 +1,4 @@
-"""s2 -- figures, and the paper's study-2.csv, from the finished `fidelity` runs.
+"""s2 -- figures and study-2.csv from finished `fidelity` runs.
 
     dev/serve.sh &
     uv run python dev/s2-fidelity/figures.py
@@ -19,7 +19,7 @@ SELECT = {}
 if __name__ == "__main__":
     df = table("fidelity", **SELECT)
     FIGURES.mkdir(exist_ok=True)
-    # the table the paper's R plots were built from
+    # export the run table for further analysis
     df.to_csv(FIGURES / "study-2.csv", index=False)
     viz.save(
         {

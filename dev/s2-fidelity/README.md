@@ -1,12 +1,12 @@
 # s2 — Fidelity
 
-The paper's study 2. How far does a pulse-level circuit drift from its
+How far does a pulse-level circuit drift from its
 unitary ideal, in fidelity and trace distance, when its pulse parameters are
 perturbed?
 
 **1530 runs** of the `fidelity` flow: 17 ansaetze × 9 pulse scaler variances
 (0 to 0.008) × 10 sample seeds (1000–1009). Everything else stays at the flow
-defaults, which are the paper's: 3 qubits, 1 layer, ternary `RY` encoding,
+defaults: 3 qubits, 1 layer, ternary `RY` encoding,
 500 samples.
 
 ## How to re-run it

@@ -18,8 +18,7 @@ from pulse_level_qfms.sweep import SEEDS, main
 OUT = Path(__file__).resolve().parent / "results" / "driver.json"
 
 #: A finer off-grid resolution than the flow default, so the target sits
-#: between the comb lines rather than near one. The depth is not the paper's
-#: (docs/DECISIONS.md D5).
+#: between the comb lines rather than near one. This study uses two layers.
 COMMON = {"offgrid_resolution": 4, "mts": 4, "n_layers": 2}
 
 STRATEGIES = ["hamming", "binary", "ternary"]

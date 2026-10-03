@@ -3,7 +3,7 @@
 Can the encoding pulse scalers reach frequencies the unitary parameters
 cannot, and what does that arm owe to which of its parts? Every cell trains
 on an off-grid target (`offgrid_mode=generator`, `mts=4`) through the
-`train_enc` flow, at `n_layers=2` (pinned, `docs/DECISIONS.md` D5).
+`train_enc` flow, at `n_layers=2`.
 
 **364 runs** in two blocks:
 

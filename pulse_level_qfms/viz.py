@@ -182,14 +182,10 @@ def landscape_over_eta(df: pd.DataFrame, curve: str):
     """
     Plot the loss over the encoding scaler, one panel per encoding gate.
 
-    Each panel is a slice through the loss in which a single encoding scaler
-    is swept while the others sit at their target values, so the slice runs
-    from the initial scaler $\\eta = 1$ through the aligned one. The
-    oscillation along $\\eta$ has period $1/(mts \\cdot \\gamma)$ for a gate
-    driving the generator $\\gamma$, so the panels of the higher generators
-    pack proportionally more local minima between the two. The panels share the
-    scaler axis but not the loss axis, which differs by orders of magnitude
-    between them.
+    Each panel sweeps one scaler while the others stay at their target values.
+    For generator $\\gamma$, loss oscillates with period
+    $1/(mts \\cdot \\gamma)$; panels share the scaler axis but use separate
+    loss axes.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
@@ -278,15 +274,10 @@ def landscape_over_eta(df: pd.DataFrame, curve: str):
 
 
 def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
-    """Basin width around the aligned scaler and density of local minima on the
-    way to it.
+    """Measure basin width and minima density along a scaler sweep.
 
-    The basin is the span between the two local maxima flanking the minimum at
-    `target`, i.e. the main lobe of the loss. The density is the number of
-    local minima strictly between the initial scaler $\\eta = 1$ and `target`
-    per unit of scaler travelled, which is how often a descent from the initial
-    scaler can stall. Dividing by the path length removes the random draw of
-    the target scaler, leaving a quantity that depends on the generator alone.
+    The basin spans the maxima flanking the minimum at ``target``. Density is
+    the number of minima between 1 and ``target`` divided by that distance.
 
     Args:
         grid (np.ndarray): The scaler grid.
@@ -321,21 +312,12 @@ def _basin_and_minima(grid: np.ndarray, values: np.ndarray, target: float):
 
 def landscape_scaling(df: pd.DataFrame):
     """
-    Plot the basin width and the density of local minima against the generator
-    the swept gate drives, one marker per gate and run.
+    Plot basin width and minima density against each gate's generator.
 
-    Both follow from the Dirichlet kernel of the sample window: the loss
-    oscillates with period $1/(mts \\cdot \\gamma)$ along the scaler of a gate
-    driving the generator $\\gamma$, so the main lobe spans
-    $2/(mts \\cdot \\gamma)$ and the path from the initial to the aligned
-    scaler crosses $mts \\cdot \\gamma$ oscillations per unit of scaler
-    travelled. The measured values are read off the concentrated loss, which
-    depends on the encoding and the target only, so the spread across markers
-    at one generator reflects the target draw rather than the ansatz.
-
-    The basin reference is the sharper of the two: counting strict local minima
-    over a path only a few oscillations long is a coarse statistic, and the
-    superposition over target components merges part of the lobes.
+    The concentrated loss gives a reference basin width
+    $2/(mts \\cdot \\gamma)$ and minima density $mts \\cdot \\gamma$ for
+    generator $\\gamma$. Markers at one generator vary with the target draw;
+    minima counts are coarse on short paths.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
@@ -460,26 +442,14 @@ def _strategy_generator_max(strategy: str, n_frequencies: float) -> float:
 
 def landscape_scaling_frequencies(df: pd.DataFrame):
     """
-    Plot the hardness of the highest encoding generator against the number of
-    frequencies of the model, one point per run, one trace per encoding
-    strategy.
+    Plot basin width and minima density against model spectrum size.
 
-    Hardness is read off the concentrated loss of the gates driving the largest
-    generator $\\gamma_{max}$, averaged over them when several do, and over the
-    runs that share a spectrum size, whose spread is shown as an error bar: the
-    width of
-    the basin around the aligned scaler and the number of local minima per unit
-    of scaler travelled towards it. The Dirichlet geometry gives both in closed
-    form, $W = 2 / (mts \\cdot \\gamma_{max})$ and
-    $\\nu = mts \\cdot \\gamma_{max}$, and the encoding strategy ties
-    $\\gamma_{max}$ to the spectrum size $|\\Omega|$: $|\\Omega| / 3$ for
-    ternary, $(|\\Omega| + 1) / 4$ for binary and $1$ for hamming. Hardness
-    therefore grows linearly with the spectrum for the exponential encodings
-    and stays flat for hamming, which is the control.
+    Use the largest encoding generator in each run and one trace per strategy.
 
-    The basin is the sharper of the two measurements. The minima density counts
-    strict local minima over a path only a few oscillations long, so it carries
-    visibly more scatter.
+    Use basin width and minima density for gates with the largest generator
+    $\\gamma_{max}$, averaging runs of the same spectrum size. Dirichlet
+    references are $2/(mts \\cdot \\gamma_{max})$ and
+    $mts \\cdot \\gamma_{max}$. Error bars show variation across runs.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
@@ -597,30 +567,14 @@ def landscape_scaling_frequencies(df: pd.DataFrame):
 
 def landscape_over_circuits(df: pd.DataFrame):
     """
-    Plot the basin width and the density of local minima of the fixed-parameter
-    loss for each ansatz, over the runs of the most frequent encoding, each
-    normalised by its Dirichlet prediction.
+    Compare normalized basin width and minima density across ansatzes.
 
-    The concentrated loss depends on the comb and the target only, so its
-    curves are bitwise identical across ansätze and cannot answer this
-    question. The fixed-parameter loss is the slice that does see the trainable
-    unitary, through the coefficients, and both quantities are divided by what
-    the Dirichlet geometry gives for the gate being swept, $2/(mts \\cdot
-    \\gamma)$ for the basin and $mts \\cdot \\gamma$ for the density. The
-    divisor is built from the generator $\\gamma$ that gate drives and the
-    window length $mts$, not from the size of the spectrum: within one run the
-    gates differ in $\\gamma$ while $\\lvert \\Omega \\rvert$ is fixed, and
-    dividing each gate by its own value is what makes them comparable and lets
-    all of them be pooled.
+    Use fixed-parameter loss from the most common encoding strategy.
 
-    The shaded band in each panel is the global mean plus and minus the spread
-    of the seeds within one ansatz, i.e. the noise floor of that measurement.
-    Ansatz means inside it are not distinguishable from re-drawing the seed with
-    the same ansatz. The two panels behave differently: the basin is a single
-    feature bounded by the two flanking maxima and stays inside the band, while
-    the density counts every strict local minimum on the path and therefore
-    also counts the shallow ripple the coefficients contribute, which is what
-    makes it track the ansatz.
+    Use fixed-parameter loss so the measurements reflect each ansatz's
+    coefficients. Normalize each gate by its Dirichlet references:
+    $2/(mts \\cdot \\gamma)$ for basin width and $mts \\cdot \\gamma$ for
+    minima density. Shaded bands show variation across seeds.
 
     Args:
         df (pd.DataFrame): DataFrame carrying the list-valued landscape
@@ -777,11 +731,7 @@ def spectrum_over_distortion(df: pd.DataFrame, show_error):
     Plot the coefficient magnitude over frequency, one trace per pulse
     parameter variance, for each ansatz.
 
-    The frequency axis is oversampled (see the `mts` parameter of the
-    spectrum study), so the bins between the integers are the ones that can
-    only be populated once the encoding gates acquire a frequency shift.
-    An undistorted model puts all of its mass on the integer bins, so any
-    growth in between is the effect under test.
+    Non-integer bins reveal frequency shifts from distorted encoding gates.
 
     Args:
         df (pd.DataFrame): DataFrame with coeff.mean.f* columns,
@@ -848,10 +798,7 @@ def offgrid_mass_over_distortion(df: pd.DataFrame, show_error):
     Plot the share of coefficient magnitude sitting on non-integer
     frequencies over the pulse parameter variance.
 
-    This condenses the spectrum into the single quantity the hypothesis is
-    about: an undistorted model is supported on the integer frequencies
-    alone, so a rising off-grid share means the encoding gates shifted the
-    frequencies away from that grid.
+    An undistorted model has no non-integer frequency mass.
 
     Args:
         df (pd.DataFrame): DataFrame with coeff.mean.f* columns,
@@ -1091,12 +1038,11 @@ def coeff_var_delta_over_distortion(df: pd.DataFrame, show_error):
 
 
 def fcc_over_distortion(df: pd.DataFrame, show_error):
-    """
-    Given a dataframe with fccs for different distortions,
-    plot the fcc over the distortions
+    """Plot mean Fourier coefficient concentration against pulse variance.
 
     Args:
-        df (pd.DataFrame): _description_
+        df: Runs with ``ansatz``, ``pulse_params_variance``, and ``fcc``.
+        show_error: Show standard deviation across seeds.
     """
     fig = go.Figure()
 
@@ -1139,12 +1085,11 @@ def fcc_over_distortion(df: pd.DataFrame, show_error):
 
 
 def fidelity_over_distortion(df: pd.DataFrame, show_error):
-    """
-    Given a dataframe with fccs for different distortions,
-    plot the fcc over the distortions
+    """Plot mean infidelity against pulse variance for each ansatz.
 
     Args:
-        df (pd.DataFrame): _description_
+        df: Runs with ``ansatz``, ``pulse_params_variance``, and ``fidelity``.
+        show_error: Show standard deviation across seeds.
     """
     fig = go.Figure()
 
@@ -1187,12 +1132,12 @@ def fidelity_over_distortion(df: pd.DataFrame, show_error):
 
 
 def trace_distance_over_distortion(df: pd.DataFrame, show_error):
-    """
-    Given a dataframe with fccs for different distortions,
-    plot the fcc over the distortions
+    """Plot mean trace distance against pulse variance for each ansatz.
 
     Args:
-        df (pd.DataFrame): _description_
+        df: Runs with ``ansatz``, ``pulse_params_variance``, and
+            ``trace-distance``.
+        show_error: Show standard deviation across seeds.
     """
     fig = go.Figure()
 
@@ -1279,18 +1224,15 @@ def pulse_param_mse_comparison(
     df: pd.DataFrame,
     show_error: bool = True,
 ):
-    """
-    Compare the train MSE across circuits for train_pulse=True vs False.
-    Produces a grouped bar chart with circuits on the x-axis and two bars per
-    circuit (one for each train_pulse setting), including error bars over seeds.
+    """Compare training MSE for gate, pulse, and decomposed circuits.
 
     Args:
-        df (pd.DataFrame): DataFrame with columns "ansatz", "train_pulse",
-            "train_mse", "run_id", and "data.seed".
-        show_error (bool): Whether to display error bars. Defaults to True.
+        df: Runs with ``ansatz``, ``train_pulse``, ``decompose_circuit``,
+            ``train_mse``, and ``model.n_pulse_params``.
+        show_error: Show standard deviation across seeds.
 
     Returns:
-        go.Figure: The plotly figure.
+        Grouped bar chart by ansatz and training mode.
     """
     fig = go.Figure()
 
@@ -1347,22 +1289,17 @@ def pulse_param_mse_comparison(
 def pulse_mean_and_variance_over_step(
     df: pd.DataFrame, show_error: bool = True
 ):
-    """
-    Visualize how pulse_scaler_mean and pulse_scaler_std evolve over training
-    steps.  For each ansatz the per-step metric data is read from the
-    list-valued columns on ``df`` itself, averaged over seeds, and plotted
-    with optional error bars.
+    """Plot pulse scaler mean and standard deviation over training steps.
+
+    Uses runs with ``train_pulse=True`` and averages each curve over seeds.
+    Falls back to encoding pulse scaler metrics when needed.
 
     Args:
-        df (pd.DataFrame): DataFrame with columns "run_id", "ansatz",
-            "train_pulse" and the list-valued step/value columns produced
-            by ``table``.  Only rows where train_pulse is True are
-            considered.
-        show_error (bool): Whether to display error bars (std over seeds).
+        df: Runs with streamed metric step and value columns from ``table``.
+        show_error: Show standard deviation across seeds.
 
     Returns:
-        tuple[go.Figure, go.Figure]: Two figures – one for pulse_scaler_mean
-            and one for pulse_scaler_std over training steps.
+        Figures for scaler mean and scaler standard deviation.
     """
     # Only consider runs that actually trained pulse parameters
     filtered_df = df[df["train_pulse"] == True]  # noqa: E712
@@ -1438,20 +1375,16 @@ def pulse_mean_and_variance_over_step(
 def loss_over_step(
     df: pd.DataFrame, show_error: bool = True
 ):
-    """
-    Visualize how the training loss evolves over training steps for each ansatz.
-    For each ansatz the per-step metric data is read from the list-valued
-    columns on ``df`` itself, averaged over seeds, and plotted with optional
-    error bars.
+    """Plot training MSE over steps by ansatz and pulse training mode.
+
+    Curves are averaged over seeds from the step and value columns in ``table``.
 
     Args:
-        df (pd.DataFrame): DataFrame with columns "run_id", "ansatz",
-            "train_pulse" and the list-valued step/value columns produced
-            by ``table``.
-        show_error (bool): Whether to display error bars (std over seeds).
+        df: Runs with ``ansatz``, ``train_pulse``, and streamed MSE columns.
+        show_error: Show standard deviation across seeds.
 
     Returns:
-        go.Figure: A figure showing loss over training steps.
+        Training loss figure.
     """
     ansatzes = sort_ansatzes(df["ansatz"].unique())
 

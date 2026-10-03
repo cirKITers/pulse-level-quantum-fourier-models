@@ -1,4 +1,4 @@
-"""Expressibility of the circuit, with the pulse level as a sampling axis."""
+"""Measure circuit expressibility while sampling unitary or pulse parameters."""
 
 import logging
 from typing import Dict, List, Tuple
@@ -16,14 +16,10 @@ log = logging.getLogger(__name__)
 
 
 class PulseExpressibility(Expressibility):
-    """Override the expressibility sampling to support a ``sample_axis``
-    parameter, mirroring the approach used in :class:`PulseFCC`.
+    """Sample unitary parameters, pulse scalers, or both for expressibility.
 
-    When ``sample_axis`` contains ``"unitary"`` the unitary parameters are
-    randomised across ``n_samples`` sets (original library behaviour).
-    When it contains ``"pulse"`` the pulse parameters are distorted with
-    a Gaussian scaler controlled by ``pulse_params_variance``.
-    Both may be active at the same time.
+    ``sample_axis`` selects the sampled groups. Pulse scalers receive Gaussian
+    distortion controlled by ``pulse_params_variance``.
     """
 
     @staticmethod
@@ -35,22 +31,20 @@ class PulseExpressibility(Expressibility):
         pulse_params_variance: float,
         scale: bool = False,
     ) -> jnp.ndarray:
-        """
-        Compute the state fidelities for pairs of random parameter sets,
-        with control over which axes (unitary / pulse) are sampled.
+        """Compute state fidelities for pairs of sampled parameter sets.
 
         Args:
             model (Model): The quantum model.
             n_samples (int): Number of *pairs* of parameter sets.
             random_key (jax.random.PRNGKey): JAX random key for parameter
                 initialization and pulse scaler generation.
-            sample_axis (List[str]): Subset of ``["unitary", "pulse"]``.
+            sample_axis (List[str]): Any of ``"unitary"`` and ``"pulse"``.
             pulse_params_variance (float): Std-dev of the multiplicative
                 Gaussian noise applied to pulse parameters.
             scale (bool): Whether to scale the number of samples.
 
         Returns:
-            jnp.ndarray: Array of shape ``(n_samples,)`` with fidelities.
+            jnp.ndarray: One fidelity per sampled pair.
         """
         if scale:
             total_samples = int(jnp.power(2, model.n_qubits) * n_samples)
@@ -133,12 +127,7 @@ class PulseExpressibility(Expressibility):
         pulse_params_variance: float,
         scale: bool = False,
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        """
-        Sample the state fidelities and histogram them.
-
-        Wraps :meth:`_sample_state_fidelities` with histogram binning,
-        identical to the base class but routed through our override.
-        """
+        """Bin sampled state fidelities into a histogram."""
         if scale:
             n_samples = int(jnp.power(2, model.n_qubits) * n_samples)
             n_bins = model.n_qubits * n_bins
