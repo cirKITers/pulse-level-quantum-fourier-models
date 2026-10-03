@@ -1,8 +1,13 @@
 # s5 — Spectrum
 
+## Question
+
 Where do a model's Fourier coefficients sit when only the pulse parameters of
-its encoding gates are perturbed, while the ansatz runs as a unitary? The
-frequency axis is oversampled (`mts=4`, bin spacing 1/4), which is what makes
+its encoding gates are perturbed, while the ansatz runs as a unitary?
+
+## Method
+
+The frequency axis is oversampled (`mts=4`, bin spacing 1/4), which is what makes
 a frequency shift distinguishable from a change in amplitude.
 
 **1530 runs** of the `spectrum` flow: 17 ansaetze × 9 pulse scaler variances
@@ -10,7 +15,7 @@ a frequency shift distinguishable from a change in amplitude.
 pins because the flow default uses one layer. Samples are drawn jointly over
 the unitary parameters and the encoding pulse scalers.
 
-## How to re-run it
+## Reproduce
 
 ```sh
 dev/serve.sh                                     # the engine, on ./.fluksio

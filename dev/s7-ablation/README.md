@@ -1,9 +1,14 @@
 # s7 — Encoding pulses on an off-grid target
 
+## Question
+
 Can the encoding pulse scalers reach frequencies the unitary parameters
-cannot, and what does that arm owe to which of its parts? Every cell trains
-on an off-grid target (`offgrid_mode=generator`, `mts=4`) through the
-`train_enc` flow, at `n_layers=2`.
+cannot, and what does that arm owe to which of its parts?
+
+## Method
+
+Every cell trains on an off-grid target (`offgrid_mode=generator`, `mts=4`)
+through the `train_enc` flow, at `n_layers=2`.
 
 **364 runs** in two blocks:
 
@@ -29,7 +34,7 @@ on an off-grid target (`offgrid_mode=generator`, `mts=4`) through the
   × 10 data seeds (1000–1009), `decompose_circuit=false`: every ansatz trained
   from the same target with the encoding at gate level and at pulse level.
 
-## How to re-run it
+## Reproduce
 
 ```sh
 dev/serve.sh                                     # the engine, on ./.fluksio

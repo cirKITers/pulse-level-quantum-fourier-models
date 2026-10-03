@@ -1,12 +1,17 @@
 # s6 — Loss landscape
 
-Why are the encoding pulse scalers hard to train? The flow sweeps the
-amplitude scaler of one encoding gate at a time against an off-grid target
-(`offgrid_mode=generator`) and records the loss along it, one curve per
-encoding generator, next to its analytic counterpart. The loss along a scaler
-is expected to oscillate with a period set by the generator it acts on, so the
-questions are how the basin around the aligned scaler and the number of local
-minima on the way to it scale with the generator.
+## Question
+
+Why are the encoding pulse scalers hard to train? How do the basin around the
+aligned scaler and the number of local minima on the way to it scale with the
+encoding generator?
+
+## Method
+
+The flow sweeps the amplitude scaler of one encoding gate at a time against an
+off-grid target (`offgrid_mode=generator`) and records the loss along it, one
+curve per encoding generator, next to its analytic counterpart. The loss along
+a scaler is expected to oscillate with a period set by the generator it acts on.
 
 **Two blocks** of the `landscape` flow, each cell with `model_seed = data_seed`
 over 10 seeds (1000–1009), all at `n_layers=2`, `mts=4` and
@@ -21,7 +26,7 @@ lines rather than near one:
 The two blocks share their `Circuit_3`/ternary/3-qubit corner, which the
 driver submits once.
 
-## How to re-run it
+## Reproduce
 
 ```sh
 dev/serve.sh                                     # the engine, on ./.fluksio

@@ -1,10 +1,14 @@
-# s8 - Trained slice
+# s8 — Trained slice
+
+## Question
 
 Does training the ansatz along an encoding scaler bring the fixed slice of s6
 toward the concentrated one, and do the trainable-gate pulse scalers bring it
-closer than the unitary parameters alone? The fixed slice narrows the basin to
-about 0.6 of its Dirichlet prediction; the concentrated slice, which fits free
-coefficients, does not. The `trained` curve of the `landscape` flow fits the
+closer than the unitary parameters alone?
+
+## Method
+
+The `trained` curve of the `landscape` flow fits the
 ansatz at the target scalers from the start of the fixed slice and from
 `fit_starts` random draws of $\theta$, keeping the best, then continues that fit
 along each gate's grid out to both ends and back, every scaler taking `steps`
@@ -13,15 +17,6 @@ target with the lowest loss is fitted there once more; while that improves
 the target loss by more than a percent, the sweep repeats from it (at most
 `rounds` times). Every scaler keeps the lowest loss any pass reached, and the
 run records the target loss of every round.
-
-Two earlier versions did not hold up. Training every scaler on its own from
-the initial parameters landed in scattered optima, three times rougher than
-the fixed slice. A single continuation from one fit at the target kept
-improving on its way out: in four of five slices the loss fell below its value
-at the target, because that fit had stalled in a poor optimum (C15 at seed
-1001 fits to 0.042 from its initial parameters, to 0.012 from the best random
-start). Neither version records the target loss of every round, and
-`figures.py` leaves their runs out.
 
 102 runs of the `landscape` flow: 16 ansaetze from the fixed-slice grid
 (C9's flat $\gamma = 3$ slice drops out of the statistics) $\times$ 3 seeds
@@ -37,11 +32,25 @@ density read; `eta_max=2.5` keeps the right flank of a $\gamma = 1$ target at
 1.75. The fits take 500 steps from 5 starts, the continuation 20 per scaler,
 both at learning rate 1e-2, for at most 3 rounds.
 
+## Findings
+
+The fixed slice narrows the basin to about 0.6 of its Dirichlet prediction;
+the concentrated slice, which fits free coefficients, does not.
+
+Two earlier versions did not hold up. Training every scaler on its own from
+the initial parameters landed in scattered optima, three times rougher than
+the fixed slice. A single continuation from one fit at the target kept
+improving on its way out: in four of five slices the loss fell below its value
+at the target, because that fit had stalled in a poor optimum (C15 at seed
+1001 fits to 0.042 from its initial parameters, to 0.012 from the best random
+start). Neither version records the target loss of every round, and
+`figures.py` leaves their runs out.
+
 The `all_pulse` runs dominate: a step costs about 30 times one with $\theta$
 alone, and the out-and-back sweep with its rounds costs two to four times a
 single continuation.
 
-## How to re-run it
+## Reproduce
 
 ```sh
 RUNS=18 dev/serve.sh                                 # the engine, on ./.fluksio

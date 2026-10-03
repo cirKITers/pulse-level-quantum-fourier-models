@@ -1,15 +1,13 @@
 # Pulse Level Quantum Fourier Models
 
-Studies of what a quantum Fourier model gains, and loses, when its gates run as
-calibrated pulses rather than as ideal unitaries. s1–s4 examine ansatz pulses;
-s5–s8 examine pulse-level encodings.
+This project studies quantum Fourier models with calibrated pulses in place of
+ideal gates. Studies s1–s4 examine ansatz pulses; s5–s8 examine encoding pulses.
 
 Tech stack:
 - [qml-essentials](https://github.com/cirKITers/qml-essentials): quantum Fourier models
 - [jaqsi](https://github.com/cirKITers/jaqsi): simulator in JAX
 - JAX: array computation and automatic differentiation
 - Fluksio: data pipeline and experiment tracking
-
 
 ## Layout
 
@@ -33,27 +31,10 @@ dev/                  the research: one folder per study, plus the engine script
 ├── serve.sh          the engine, on ./.fluksio
 ├── export.sh         every flow's runs and curves, as CSV
 ├── import-mlflow/    archived MLflow runs (study-N.csv), into the engine
-└── sN-<name>/        README.md (question, grid, how to re-run), run.py (the driver) and
-                      figures.py; each keeps its own results/ figures/ logs/
+└── sN-<name>/        README.md, run.py, figures.py, and study-local results/ figures/ logs/
 notebooks/            exploratory scripts
 tests/                run with `uv run pytest`
 ```
-
-A flow is named by what it computes; a study is a driver over one flow:
-
-| study | flow | runs | question |
-| --- | --- | --- | --- |
-| `s1-fcc` | `fcc` | 1530 | Fourier coefficient concentration under ansatz pulse distortion |
-| `s2-fidelity` | `fidelity` | 1530 | fidelity and trace distance under the same distortion |
-| `s3-expressibility` | `expressibility` | 1530 | expressibility under the same distortion |
-| `s4-training` | `train` | 510 | training with unitary, decomposed and pulse-level ansatz parameters |
-| `s5-spectrum` | `spectrum` | 1530 | where the coefficients sit under encoding pulse distortion |
-| `s6-landscape` | `landscape` | 240 | the loss along each encoding pulse scaler |
-| `s7-ablation` | `train_enc` | 364 | training on an off-grid target with the encoding at pulse level |
-| `s8-trained-slice` | `landscape` | 102 | the loss along each encoding pulse scaler with the ansatz trained along the sweep |
-
-Every flow reports `model_spec`: the parameter counts and the pulse configuration
-the run was built under.
 
 Everything a run reads or writes is gitignored: `.fluksio/` (the engine's store,
 at the repo root), the root `logs/` and `results/`, and each study's `results/`,
@@ -81,6 +62,24 @@ other values pins them in its driver. Override an input on the command line
 `Client.submit(flow, params)`. Final numbers are read with
 `fluksio export runs`, streamed curves with `fluksio export metrics`; `dev/export.sh`
 writes both for every flow.
+
+## Architecture
+
+A flow is named by what it computes; a study drives a grid over one flow:
+
+| study | flow | runs | question |
+| --- | --- | --- | --- |
+| `s1-fcc` | `fcc` | 1530 | Fourier coefficient concentration under ansatz pulse distortion |
+| `s2-fidelity` | `fidelity` | 1530 | fidelity and trace distance under the same distortion |
+| `s3-expressibility` | `expressibility` | 1530 | expressibility under the same distortion |
+| `s4-training` | `train` | 510 | training with unitary, decomposed and pulse-level ansatz parameters |
+| `s5-spectrum` | `spectrum` | 1530 | where the coefficients sit under encoding pulse distortion |
+| `s6-landscape` | `landscape` | 240 | the loss along each encoding pulse scaler |
+| `s7-ablation` | `train_enc` | 364 | training on an off-grid target with the encoding at pulse level |
+| `s8-trained-slice` | `landscape` | 102 | the loss along each encoding pulse scaler with the ansatz trained along the sweep |
+
+Every flow reports `model_spec`: the parameter counts and pulse configuration
+the run was built under.
 
 ## Visualization
 

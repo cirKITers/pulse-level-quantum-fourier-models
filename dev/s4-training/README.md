@@ -1,8 +1,12 @@
 # s4 — Training
 
+## Question
+
 Does training the pulse-level parameters of the ansatz, or
 the scalers of its basis-gate decomposition, fit a Fourier series better than
 the unitary parameters alone?
+
+## Method
 
 **510 runs** of the `train` flow: 17 ansaetze × 3 arms × 10 data seeds
 (1000–1009). The target is drawn on the model's own frequency comb over one
@@ -42,7 +46,7 @@ Inputs absent from the archived runs use their inert on-grid defaults:
 Those 510 runs are in the engine, imported by `dev/import-mlflow/run.py`, so the
 driver finds every cell done; a fresh run of the study needs them deleted first.
 
-## How to re-run it
+## Reproduce
 
 ```sh
 dev/serve.sh                                     # the engine, on ./.fluksio

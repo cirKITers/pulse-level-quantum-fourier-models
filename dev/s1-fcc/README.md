@@ -1,8 +1,12 @@
 # s1 — Fourier coefficient concentration
 
+## Question
+
 How concentrated are a model's Fourier coefficients, and
 how do the concentration (FCC) and the coefficient variances change when the
 pulse parameters of the ansatz are perturbed?
+
+## Method
 
 **1530 runs** of the `fcc` flow: 17 ansaetze × 9 pulse scaler variances
 (0 to 0.008) × 10 sample seeds (1000–1009). Everything else stays at the flow
@@ -10,7 +14,7 @@ defaults: 3 qubits, 1 layer, ternary `RY` encoding,
 500 samples drawn jointly over the unitary parameters and the ansatz pulse
 scalers.
 
-## How to re-run it
+## Reproduce
 
 ```sh
 dev/serve.sh                                     # the engine, on ./.fluksio
