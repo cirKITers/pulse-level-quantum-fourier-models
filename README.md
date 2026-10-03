@@ -1,17 +1,15 @@
 # Pulse Level Quantum Fourier Models
 
 Studies of what a quantum Fourier model gains, and loses, when its gates run as
-calibrated pulses rather than as ideal unitaries. s1–s4 are the paper's
-studies; s5–s8 extend them to pulse-level encodings.
+calibrated pulses rather than as ideal unitaries. s1–s4 examine ansatz pulses;
+s5–s8 examine pulse-level encodings.
 
 Tech stack:
-- qml-essentials: quantum Fourier models, simulated by its JAX backend jaqsi
-- JAX and Optax: arrays, autodiff and the training loop
-- [Fluksio](https://fluksio.com): flows, the engine that runs them, and experiment tracking
+- [qml-essentials](https://github.com/cirKITers/qml-essentials): quantum Fourier models
+- [jaqsi](https://github.com/cirKITers/jaqsi): simulator in JAX
+- JAX: array computation and automatic differentiation
+- Fluksio: data pipeline and experiment tracking
 
-Note: qml-essentials and Fluksio are developed alongside this project. A
-limitation hit in either is flagged in `docs/NOTEPAD.md` rather than worked
-around -- at the pinned revisions one of them currently stops every run.
 
 ## Layout
 
@@ -34,14 +32,9 @@ pulse_level_qfms/     the model and what is measured on it -- nothing study-spec
 dev/                  the research: one folder per study, plus the engine script
 ├── serve.sh          the engine, on ./.fluksio
 ├── export.sh         every flow's runs and curves, as CSV
-├── import-mlflow/    the paper's MLflow runs (study-N.csv), into the engine
+├── import-mlflow/    archived MLflow runs (study-N.csv), into the engine
 └── sN-<name>/        README.md (question, grid, how to re-run), run.py (the driver) and
                       figures.py; each keeps its own results/ figures/ logs/
-docs/                 the research record
-├── DECISIONS.md      why each implementation choice was made
-├── RESEARCH.md       the measurement history
-├── FINDINGS.md       the claims
-└── NOTEPAD.md        what the tooling cost
 notebooks/            exploratory scripts
 tests/                run with `uv run pytest`
 ```
@@ -64,9 +57,9 @@ the run was built under.
 
 Everything a run reads or writes is gitignored: `.fluksio/` (the engine's store,
 at the repo root), the root `logs/` and `results/`, and each study's `results/`,
-`figures/` and `logs/`. So is the pre-Fluksio MLflow history (`mlruns*/`, the
-tarballs, `study-*.csv`). The paper's s4 runs are imported from it into the
-engine (`dev/import-mlflow`); those of s1–s3 are not located yet.
+`figures/` and `logs/`. So are the archived MLflow files (`mlruns*/`, the
+tarballs, `study-*.csv`). Archived s4 runs are imported into the engine
+(`dev/import-mlflow`); the s1–s3 runs have not been located.
 
 ## Getting started
 
@@ -82,16 +75,15 @@ engine (`dev/import-mlflow`); those of s1–s3 are not located yet.
 Pass `--sync pulse_level_qfms` to every `fluksio run`: the default sync root is the
 whole directory, which would import the drivers and notebooks too.
 
-Every input and its default is in `pulse_level_qfms/pipeline.py`. The defaults are
-the paper's (`docs/DECISIONS.md` D4); a study that runs at other values pins them
-in its driver. Override an input on the command line (`--circuit_type Circuit_15`),
-in a driver's grid, or in `Client.submit(flow, params)`. Final numbers are read with
+Every input and its default is in `pulse_level_qfms/pipeline.py`. A study using
+other values pins them in its driver. Override an input on the command line
+(`--circuit_type Circuit_15`), in a driver's grid, or in
+`Client.submit(flow, params)`. Final numbers are read with
 `fluksio export runs`, streamed curves with `fluksio export metrics`; `dev/export.sh`
 writes both for every flow.
 
 ## Visualization
 
 `uv run python dev/sN-<name>/figures.py` draws a study's figures from the engine's
-finished runs into its `figures/`; s1–s4 also write there the `study-N.csv` the paper's
-R plots were built from. The PDFs go through kaleido, which needs Chrome
-(`uv run plotly_get_chrome`).
+finished runs into its `figures/`; s1–s4 also write `study-N.csv` exports.
+The PDFs go through kaleido, which needs Chrome (`uv run plotly_get_chrome`).
