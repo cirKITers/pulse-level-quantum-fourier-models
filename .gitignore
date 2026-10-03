@@ -16,7 +16,7 @@ dev/*/results/
 dev/*/figures/
 dev/*/logs/
 
-# The MLflow history of the kedro era, and what was exported from it
+# Archived MLflow runs and their CSV exports
 mlruns_paper/
 mlruns.tar.gz
 pulse-level-quantum-fourier-models.tar.gz
