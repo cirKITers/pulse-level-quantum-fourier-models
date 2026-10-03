@@ -17,9 +17,9 @@ dependencies = [
     "rich>=14.2.0",
     "plotly>=6.5.0",
     "kaleido>=1.2.0",
-    "qml-essentials",
-    "jaqsi",
-    "fluksio",
+    "qml-essentials>=0.3.1",
+    "jaqsi>=0.1.1",
+    "fluksio>=0.1.6",
 ]
 
 [build-system]
@@ -28,11 +28,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pulse_level_qfms"]
-
-[tool.uv.sources]
-qml-essentials = { git = "https://github.com/cirKITers/qml-essentials", rev = "424e35a7c693c7107ce3934140c45f41ce29574c" }
-jaqsi = { git = "https://github.com/cirKITers/jaqsi", rev = "99ebc1406eff447d0247ea2f0e12895658569d75" }
-fluksio = { git = "https://git.stroblme.de/Fluksio/app", rev = "dafdcb76c4b4d04bc3f217c46228a5bcb3f63c40", subdirectory = "backend" }
 
 [dependency-groups]
 dev = [
