@@ -10,7 +10,7 @@ authors:
 title: "Reproduction Package for 'Beyond Gates: Pulse Level Quantum Fourier Models'"
 version: 0.1.0
 date-released: 2026-05-02
-repository-code: "https://github.com/cirKITers/fourier-fingerprints-of-ansatzes-in-qml"
+repository-code: "https://github.com/cirKITers/pulse-level-quantum-fourier-models"
 license: MIT
 identifiers:
   - type: doi
