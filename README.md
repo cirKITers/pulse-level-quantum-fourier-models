@@ -12,23 +12,23 @@ Tech stack:
 ## Layout
 
 ```
-pulse_level_qfms/     the model and what is measured on it -- nothing study-specific
-├── model.py          the circuit, optionally decomposed into basis gates, and how it
+pulse_level_qfms/     model and what is measured on it
+├── model.py          circuit, optionally decomposed into basis gates, and how it
 │                     travels between nodes
-├── data.py           the target Fourier series, on or off the model's frequency comb
+├── data.py           target Fourier series, on or off the model's frequency comb
 ├── fcc.py            Fourier coefficient concentration, pulse level as a sampling axis
 ├── fidelity.py       fidelity and trace distance of the distorted circuit
 ├── expressibility.py expressibility, pulse level as a sampling axis
-├── spectrum.py       the oversampled spectrum under encoding pulse distortion
-├── training.py       the fit, with Jacobian ranks along the way
-├── landscape.py      the loss along each encoding pulse scaler
+├── spectrum.py       oversampled spectrum under encoding pulse distortion
+├── training.py       fit, with Jacobian ranks along the way
+├── landscape.py      loss along each encoding pulse scaler
 ├── utils.py          losses
 ├── pipeline.py       the seven Fluksio flows
 ├── sweep.py          the bounded, resumable grid submitter every study shares
 ├── table.py          a flow's finished runs, read from the engine as one table
-└── viz.py            the figures, plotted from that table
-dev/                  the research: one folder per study, plus the engine script
-├── serve.sh          the engine, on ./.fluksio
+└── viz.py            figures, plotted from that table
+dev/                  one folder per study, plus the engine script
+├── serve.sh          engine, on ./.fluksio
 ├── export.sh         every flow's runs and curves, as CSV
 ├── import-mlflow/    archived MLflow runs (study-N.csv), into the engine
 └── sN-<name>/        README.md, run.py, figures.py, and study-local results/ figures/ logs/
