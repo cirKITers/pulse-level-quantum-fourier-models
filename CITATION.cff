@@ -7,8 +7,8 @@ authors:
   - family-names: "Franz"
     given-names: "Maja"
     orcid: "https://orcid.org/0000-0002-2801-7192"
-title: "Reproduction Package for 'Beyond Gates: Pulse Level Quantum Fourier Models'"
-version: 0.2.0
+title: "Pulse Level Quantum Fourier Models"
+version: 2.0.0
 date-released: 2026-10-03
 repository-code: "https://github.com/cirKITers/pulse-level-quantum-fourier-models"
 license: MIT
