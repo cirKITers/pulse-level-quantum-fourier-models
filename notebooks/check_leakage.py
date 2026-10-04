@@ -63,7 +63,7 @@ for circuit_type in ansatzes:
         model,
         shift=True,
         trim=True,
-        gate_mode="pulse",
+        gate_mode="ansatz_pulse",
         pulse_params=scaler,
         mts=mts,
         **kwargs,
