@@ -9,7 +9,7 @@ authors:
     orcid: "https://orcid.org/0000-0002-2801-7192"
 title: "Reproduction Package for 'Beyond Gates: Pulse Level Quantum Fourier Models'"
 version: 0.1.0
-date-released: 2026-05-02
+date-released: 2026-04-28
 repository-code: "https://github.com/cirKITers/pulse-level-quantum-fourier-models"
 license: MIT
 identifiers:
